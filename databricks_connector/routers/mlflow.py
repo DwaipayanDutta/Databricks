@@ -106,7 +106,7 @@ async def log_param(
 @router.get("/artifacts", summary="List artifacts")
 async def list_artifacts(
     run_id: str = Query(...),
-    path: str = Query(default=None),
+    path: str | None = Query(default=None),
     service: MlflowService = Depends(get_mlflow_service),
 ) -> dict[str, Any]:
     return await service.list_artifacts(run_id, path)

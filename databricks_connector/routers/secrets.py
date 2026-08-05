@@ -9,8 +9,10 @@ from fastapi import APIRouter, Depends, Query
 from databricks_connector.core.client import DatabricksClient, get_databricks_client
 from databricks_connector.schemas.secrets import (
     CreateScopeRequest,
+    DeleteAclRequest,
     DeleteScopeRequest,
     DeleteSecretRequest,
+    PutAclRequest,
     PutSecretRequest,
 )
 from databricks_connector.services.secrets_service import SecretsService
@@ -69,3 +71,23 @@ async def list_acls(
     scope: str = Query(...), service: SecretsService = Depends(get_secrets_service)
 ) -> dict[str, Any]:
     return await service.list_acls(scope)
+
+
+@router.put(
+    "/acls",
+    summary="Put ACL",
+    description="Create or overwrite a secret-scope ACL entry for a principal.",
+)
+async def put_acl(
+    body: PutAclRequest, service: SecretsService = Depends(get_secrets_service)
+) -> dict[str, Any]:
+    return await service.put_acl(body.scope, body.principal, body.permission)
+
+
+@router.delete(
+    "/acls", summary="Delete ACL", description="Delete a secret-scope ACL entry for a principal."
+)
+async def delete_acl(
+    body: DeleteAclRequest, service: SecretsService = Depends(get_secrets_service)
+) -> dict[str, Any]:
+    return await service.delete_acl(body.scope, body.principal)
