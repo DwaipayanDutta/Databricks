@@ -25,7 +25,7 @@ logger = get_logger(__name__)
 T = TypeVar("T")
 
 
-class CircuitState(str, enum.Enum):
+class CircuitState(enum.StrEnum):
     CLOSED = "closed"
     OPEN = "open"
     HALF_OPEN = "half_open"

@@ -8,14 +8,14 @@ functools.lru_cache so environment variables are only parsed once.
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from functools import lru_cache
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class AuthMode(str, Enum):
+class AuthMode(StrEnum):
     """Supported Databricks authentication strategies."""
 
     PAT = "pat"

@@ -127,7 +127,10 @@ def test_repair_run(client: TestClient, fake_client: FakeDatabricksClient) -> No
 
 
 def test_pause_and_resume_job(client: TestClient, fake_client: FakeDatabricksClient) -> None:
-    fake_client.get.return_value = {"job_id": 5, "settings": {"schedule": {"quartz_cron_expression": "* * * * *"}}}
+    fake_client.get.return_value = {
+        "job_id": 5,
+        "settings": {"schedule": {"quartz_cron_expression": "* * * * *"}},
+    }
     fake_client.post.return_value = {}
     assert client.post("/api/v1/jobs/pause", json={"job_id": 5}).status_code == 200
     pause_body = fake_client.post.call_args.kwargs["json_body"]

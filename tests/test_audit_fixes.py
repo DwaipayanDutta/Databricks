@@ -106,8 +106,6 @@ def test_update_permissions_rejects_legacy_principal_field(
 def test_api_key_gate_blocks_business_endpoints_when_configured(
     monkeypatch: pytest.MonkeyPatch, fake_client: FakeDatabricksClient
 ) -> None:
-    import os
-
     from databricks_connector.app import create_app
     from databricks_connector.core.client import get_databricks_client
     from databricks_connector.core.config import get_settings
