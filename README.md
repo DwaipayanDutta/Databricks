@@ -9,7 +9,7 @@ Build reliable automations, agent workflows, internal tools, and data products o
 <br />
 
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.141%2B-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Async](https://img.shields.io/badge/Async--first-httpx-7C3AED)](https://www.python-httpx.org/)
 [![Databricks](https://img.shields.io/badge/Databricks-REST%20API-FF3621?logo=databricks&logoColor=white)](https://docs.databricks.com/api/workspace/introduction)
 [![License](https://img.shields.io/badge/License-MIT-22C55E)](LICENSE)
@@ -193,6 +193,10 @@ Set `CONNECTOR_API_KEY` to protect the connector's own endpoints. Clients must t
 X-API-Key: your-connector-key
 ```
 
+The key is enforced on every `/api/v1/*` route. `/health`, `/live`, `/ready`,
+and `/metrics` intentionally stay open even when it's set, since Kubernetes
+probes and Prometheus scrapers call those without app-level credentials.
+
 Never commit credentials or `.env` files. Use your platform's secret manager in deployed environments.
 
 ---
@@ -256,7 +260,7 @@ Example log event:
 {
   "timestamp": "2026-08-05T12:39:21+0000",
   "level": "INFO",
-  "logger": "core.client",
+  "logger": "databricks_connector.core.client",
   "message": "databricks_api_call",
   "request_id": "e2b1...",
   "correlation_id": "e2b1...",
@@ -319,6 +323,10 @@ Current project checks include:
 - `bandit`
 - `pip-audit`
 
+All of the above run automatically in CI on every push/PR to `main` via
+[`.github/workflows/python.yml`](.github/workflows/python.yml), followed by
+a Docker build job that verifies the image still builds cleanly.
+
 ---
 
 ## 📁 Project layout
@@ -350,8 +358,9 @@ docker-compose.yml         Connector plus Redis
 | `make test` | Run tests and coverage |
 | `make lint` | Run lint checks |
 | `make format` | Format the codebase |
-| `make security` | Run security checks |
-| `make docker` | Build the Docker image |
+| `make security` | Run security checks (bandit + pip-audit) |
+| `make docker-build` | Build the Docker image |
+| `make docker-run` | Run via `docker compose up --build` |
 
 ---
 
