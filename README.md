@@ -16,7 +16,7 @@ Build reliable automations, agent workflows, internal tools, and data products o
 
 <br />
 
-**139 endpoints** &nbsp;·&nbsp; **14 route groups** &nbsp;·&nbsp; **5 auth modes** &nbsp;·&nbsp; **115 tests** &nbsp;·&nbsp; **87% coverage**
+**142 endpoints** &nbsp;·&nbsp; **14 route groups** &nbsp;·&nbsp; **5 auth modes** &nbsp;·&nbsp; **162 tests**
 
 <br />
 
