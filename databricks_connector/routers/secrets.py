@@ -84,9 +84,7 @@ async def put_acl(
     return await service.put_acl(body.scope, body.principal, body.permission)
 
 
-@router.delete(
-    "/acls", summary="Delete ACL", description="Delete a secret-scope ACL entry for a principal."
-)
+@router.delete("/acls", summary="Delete ACL", description="Delete a secret-scope ACL entry for a principal.")
 async def delete_acl(
     body: DeleteAclRequest, service: SecretsService = Depends(get_secrets_service)
 ) -> dict[str, Any]:

@@ -239,8 +239,7 @@ def test_uc_delete_catalog_and_schema(client: TestClient, fake_client: FakeDatab
     fake_client.delete.return_value = {}
     assert client.delete("/api/v1/unity-catalog/catalogs/main", params={"force": True}).status_code == 200
     assert (
-        client.delete("/api/v1/unity-catalog/schemas/main.default", params={"force": True}).status_code
-        == 200
+        client.delete("/api/v1/unity-catalog/schemas/main.default", params={"force": True}).status_code == 200
     )
 
 
@@ -253,9 +252,7 @@ def test_uc_external_location_and_storage_credential_lifecycle(
     assert client.delete("/api/v1/unity-catalog/external-locations/loc1").status_code == 200
 
     fake_client.post.return_value = {"name": "cred1"}
-    assert (
-        client.post("/api/v1/unity-catalog/storage-credentials", json={"name": "cred1"}).status_code == 200
-    )
+    assert client.post("/api/v1/unity-catalog/storage-credentials", json={"name": "cred1"}).status_code == 200
     fake_client.get.return_value = {"name": "cred1"}
     assert client.get("/api/v1/unity-catalog/storage-credentials/cred1").status_code == 200
     assert client.delete("/api/v1/unity-catalog/storage-credentials/cred1").status_code == 200

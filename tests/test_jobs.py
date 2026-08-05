@@ -156,9 +156,7 @@ def test_export_and_import_job(client: TestClient, fake_client: FakeDatabricksCl
     assert export_resp.status_code == 200
 
     fake_client.post.return_value = {"job_id": 7}
-    import_resp = client.post(
-        "/api/v1/jobs/import", json={"settings": {"name": "imported", "tasks": []}}
-    )
+    import_resp = client.post("/api/v1/jobs/import", json={"settings": {"name": "imported", "tasks": []}})
     assert import_resp.status_code == 200
     assert import_resp.json()["job_id"] == 7
 

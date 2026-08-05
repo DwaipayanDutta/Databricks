@@ -128,9 +128,7 @@ def test_list_spark_versions(client: TestClient, fake_client: FakeDatabricksClie
 
 def test_get_cluster_events_with_time_range(client: TestClient, fake_client: FakeDatabricksClient) -> None:
     fake_client.post.return_value = {"events": []}
-    response = client.get(
-        "/api/v1/clusters/abc/events", params={"start_time": 1000, "end_time": 2000}
-    )
+    response = client.get("/api/v1/clusters/abc/events", params={"start_time": 1000, "end_time": 2000})
     assert response.status_code == 200
     _, kwargs = fake_client.post.call_args
     assert kwargs["json_body"]["start_time"] == 1000
