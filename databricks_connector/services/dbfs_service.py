@@ -13,13 +13,16 @@ from __future__ import annotations
 from typing import Any
 
 from databricks_connector.core.client import DatabricksClient
+from databricks_connector.core.config import Settings, get_settings
+from databricks_connector.core.exceptions import PayloadTooLargeError
 
 _BASE = "/api/2.0/dbfs"
 
 
 class DbfsService:
-    def __init__(self, client: DatabricksClient) -> None:
+    def __init__(self, client: DatabricksClient, settings: Settings | None = None) -> None:
         self._client = client
+        self._settings = settings or get_settings()
 
     async def list_dir(self, path: str) -> dict[str, Any]:
         return await self._client.get(f"{_BASE}/list", params={"path": path})

@@ -76,6 +76,11 @@ class RateLimitError(DatabricksConnectorError):
     error_code = "rate_limited"
 
 
+class PayloadTooLargeError(DatabricksConnectorError):
+    status_code = 413
+    error_code = "payload_too_large"
+
+
 class DatabricksServerError(DatabricksConnectorError):
     status_code = 502
     error_code = "databricks_server_error"

@@ -111,6 +111,18 @@ class Settings(BaseSettings):
     otel_exporter_endpoint: str | None = Field(default=None)
     otel_service_name: str = Field(default="databricks-connector")
 
+    # --- DBFS ---
+    dbfs_download_max_bytes: int = Field(
+        default=256 * 1024 * 1024,
+        description=(
+            "Refuse to buffer a DBFS /download response larger than this "
+            "many bytes. The response is returned as a single in-memory "
+            "JSON payload (never streamed to the caller), so an unbounded "
+            "download is a real memory-exhaustion risk for any caller who "
+            "can point this endpoint at a large file."
+        ),
+    )
+
     # --- Security ---
     connector_api_key: str | None = Field(
         default=None,

@@ -46,17 +46,35 @@ class MonitoringService:
         }
 
     async def cluster_metrics_summary(self) -> dict[str, Any]:
-        clusters = await self._client.get("/api/2.1/clusters/list")
-        items = clusters.get("clusters", [])
         by_state: dict[str, int] = {}
-        for c in items:
-            state = c.get("state", "UNKNOWN")
-            by_state[state] = by_state.get(state, 0) + 1
-        return {"total_clusters": len(items), "by_state": by_state}
+        total = 0
+        page_token: str | None = None
+        for _ in range(_MAX_SUMMARY_PAGES):
+            params: dict[str, Any] = {"page_token": page_token} if page_token else {}
+            clusters = await self._client.get("/api/2.1/clusters/list", params=params or None)
+            items = clusters.get("clusters", [])
+            total += len(items)
+            for c in items:
+                state = c.get("state", "UNKNOWN")
+                by_state[state] = by_state.get(state, 0) + 1
+            page_token = clusters.get("next_page_token")
+            if not page_token:
+                break
+        return {"total_clusters": total, "by_state": by_state}
 
     async def job_metrics_summary(self) -> dict[str, Any]:
-        jobs = await self._client.get("/api/2.1/jobs/list", params={"limit": 100})
-        return {"total_jobs": len(jobs.get("jobs", []))}
+        total = 0
+        page_token: str | None = None
+        for _ in range(_MAX_SUMMARY_PAGES):
+            params: dict[str, Any] = {"limit": 100}
+            if page_token:
+                params["page_token"] = page_token
+            jobs = await self._client.get("/api/2.1/jobs/list", params=params)
+            total += len(jobs.get("jobs", []))
+            page_token = jobs.get("next_page_token")
+            if not page_token:
+                break
+        return {"total_jobs": total}
 
     def connector_info(self) -> dict[str, Any]:
         from databricks_connector.core.constants import CONNECTOR_NAME, CONNECTOR_VERSION
