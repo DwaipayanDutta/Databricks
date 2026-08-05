@@ -92,3 +92,46 @@ def test_resize_cluster_rejects_unknown_field(client: TestClient, fake_client: F
         "/api/v1/clusters/resize", json={"cluster_id": "abc", "num_workers": 2, "bogus_field": True}
     )
     assert response.status_code == 422
+
+
+def test_restart_cluster(client: TestClient, fake_client: FakeDatabricksClient) -> None:
+    fake_client.post.return_value = {}
+    response = client.post("/api/v1/clusters/restart", json={"cluster_id": "abc"})
+    assert response.status_code == 200
+
+
+def test_edit_cluster(client: TestClient, fake_client: FakeDatabricksClient) -> None:
+    fake_client.post.return_value = {}
+    payload = {
+        "cluster_id": "abc",
+        "cluster_name": "renamed",
+        "spark_version": "14.3.x-scala2.12",
+        "node_type_id": "i3.xlarge",
+    }
+    response = client.post("/api/v1/clusters/edit", json=payload)
+    assert response.status_code == 200
+
+
+def test_permanent_delete_cluster(client: TestClient, fake_client: FakeDatabricksClient) -> None:
+    fake_client.post.return_value = {}
+    response = client.post("/api/v1/clusters/permanent-delete", json={"cluster_id": "abc"})
+    assert response.status_code == 200
+    args, _ = fake_client.post.call_args
+    assert args[0] == "/api/2.1/clusters/permanent-delete"
+
+
+def test_list_spark_versions(client: TestClient, fake_client: FakeDatabricksClient) -> None:
+    fake_client.get.return_value = {"versions": []}
+    response = client.get("/api/v1/clusters/meta/spark-versions")
+    assert response.status_code == 200
+
+
+def test_get_cluster_events_with_time_range(client: TestClient, fake_client: FakeDatabricksClient) -> None:
+    fake_client.post.return_value = {"events": []}
+    response = client.get(
+        "/api/v1/clusters/abc/events", params={"start_time": 1000, "end_time": 2000}
+    )
+    assert response.status_code == 200
+    _, kwargs = fake_client.post.call_args
+    assert kwargs["json_body"]["start_time"] == 1000
+    assert kwargs["json_body"]["end_time"] == 2000

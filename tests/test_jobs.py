@@ -100,3 +100,90 @@ def test_trigger_job_rejects_unknown_field(client: TestClient, fake_client: Fake
     the request body should be a clear 422, not silently ignored."""
     response = client.post("/api/v1/jobs/trigger", json={"job_id": 5, "totally_made_up_field": "oops"})
     assert response.status_code == 422
+
+
+def test_update_job(client: TestClient, fake_client: FakeDatabricksClient) -> None:
+    fake_client.post.return_value = {}
+    payload = {"job_id": 5, "new_settings": {"name": "renamed"}, "fields_to_remove": []}
+    response = client.put("/api/v1/jobs/update", json=payload)
+    assert response.status_code == 200
+    args, kwargs = fake_client.post.call_args
+    assert args[0] == "/api/2.1/jobs/update"
+
+
+def test_reset_job(client: TestClient, fake_client: FakeDatabricksClient) -> None:
+    fake_client.post.return_value = {}
+    payload = {"job_id": 5, "new_settings": {"name": "reset-name"}}
+    response = client.post("/api/v1/jobs/reset", json=payload)
+    assert response.status_code == 200
+
+
+def test_repair_run(client: TestClient, fake_client: FakeDatabricksClient) -> None:
+    fake_client.post.return_value = {"repair_id": 1}
+    response = client.post("/api/v1/jobs/repair", json={"run_id": 9, "rerun_tasks": ["main"]})
+    assert response.status_code == 200
+    _, kwargs = fake_client.post.call_args
+    assert kwargs["json_body"]["rerun_tasks"] == ["main"]
+
+
+def test_pause_and_resume_job(client: TestClient, fake_client: FakeDatabricksClient) -> None:
+    fake_client.get.return_value = {"job_id": 5, "settings": {"schedule": {"quartz_cron_expression": "* * * * *"}}}
+    fake_client.post.return_value = {}
+    assert client.post("/api/v1/jobs/pause", json={"job_id": 5}).status_code == 200
+    pause_body = fake_client.post.call_args.kwargs["json_body"]
+    assert pause_body["new_settings"]["schedule"]["pause_status"] == "PAUSED"
+
+    assert client.post("/api/v1/jobs/resume", json={"job_id": 5}).status_code == 200
+    resume_body = fake_client.post.call_args.kwargs["json_body"]
+    assert resume_body["new_settings"]["schedule"]["pause_status"] == "UNPAUSED"
+
+
+def test_clone_job(client: TestClient, fake_client: FakeDatabricksClient) -> None:
+    fake_client.get.return_value = {"job_id": 5, "settings": {"name": "original"}}
+    fake_client.post.return_value = {"job_id": 6}
+    response = client.post("/api/v1/jobs/clone", json={"job_id": 5, "new_name": "clone-name"})
+    assert response.status_code == 200
+    create_body = fake_client.post.call_args.kwargs["json_body"]
+    assert create_body["name"] == "clone-name"
+
+
+def test_export_and_import_job(client: TestClient, fake_client: FakeDatabricksClient) -> None:
+    fake_client.get.return_value = {"job_id": 5, "settings": {"name": "exported"}}
+    export_resp = client.post("/api/v1/jobs/export", json={"job_id": 5})
+    assert export_resp.status_code == 200
+
+    fake_client.post.return_value = {"job_id": 7}
+    import_resp = client.post(
+        "/api/v1/jobs/import", json={"settings": {"name": "imported", "tasks": []}}
+    )
+    assert import_resp.status_code == 200
+    assert import_resp.json()["job_id"] == 7
+
+
+def test_get_run(client: TestClient, fake_client: FakeDatabricksClient) -> None:
+    fake_client.get.return_value = {"run_id": 7, "state": {"life_cycle_state": "RUNNING"}}
+    response = client.get("/api/v1/job-runs/7")
+    assert response.status_code == 200
+    assert response.json()["run_id"] == 7
+
+
+def test_get_run_output(client: TestClient, fake_client: FakeDatabricksClient) -> None:
+    fake_client.get.return_value = {"notebook_output": {"result": "42"}}
+    response = client.get("/api/v1/job-runs/7/output")
+    assert response.status_code == 200
+
+
+def test_job_run_cancel_and_repair_via_job_runs_router(
+    client: TestClient, fake_client: FakeDatabricksClient
+) -> None:
+    fake_client.post.return_value = {}
+    assert client.post("/api/v1/job-runs/7/cancel").status_code == 200
+    assert client.post("/api/v1/job-runs/7/repair").status_code == 200
+
+
+def test_retry_run(client: TestClient, fake_client: FakeDatabricksClient) -> None:
+    fake_client.get.return_value = {"run_id": 7, "job_id": 5}
+    fake_client.post.return_value = {"run_id": 99}
+    response = client.post("/api/v1/job-runs/7/retry")
+    assert response.status_code == 200
+    assert response.json()["run_id"] == 99
