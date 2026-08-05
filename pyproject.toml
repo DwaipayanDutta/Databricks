@@ -1,0 +1,65 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "databricks-connector"
+version = "1.0.0"
+description = "Enterprise FastAPI connector exposing the full Databricks REST API surface for Multi-Agent AI Platforms."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "Platform Engineering" }]
+dependencies = [
+    "fastapi==0.115.6",
+    "uvicorn[standard]==0.34.0",
+    "pydantic==2.10.4",
+    "pydantic-settings==2.7.1",
+    "httpx==0.28.1",
+    "tenacity==9.0.0",
+]
+
+[project.optional-dependencies]
+cache = ["redis==5.2.1"]
+otel = [
+    "opentelemetry-api==1.29.0",
+    "opentelemetry-sdk==1.29.0",
+    "opentelemetry-instrumentation-fastapi==0.50b0",
+]
+dev = [
+    "pytest==8.3.4",
+    "pytest-asyncio==0.25.1",
+    "pytest-cov==6.0.0",
+    "respx==0.22.0",
+    "ruff==0.8.6",
+    "black==24.10.0",
+    "mypy==1.14.1",
+]
+
+[tool.setuptools.packages.find]
+include = ["core*", "routers*", "services*", "schemas*"]
+
+[tool.black]
+line-length = 110
+target-version = ["py312"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+# B008: FastAPI's `Depends(...)` / `Query(...)` / `Body(...)` in argument
+# defaults is the documented, idiomatic pattern -- not a real bug here.
+ignore = ["B008"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+disallow_untyped_defs = false
+warn_unused_ignores = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "--cov=core --cov=services --cov=routers --cov-report=term-missing"

@@ -1,0 +1,36 @@
+# --- Web framework ---
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+starlette==0.41.3
+
+# --- Data validation / settings ---
+pydantic==2.10.4
+pydantic-settings==2.7.1
+
+# --- HTTP client ---
+httpx==0.28.1
+
+# --- Retry / resiliency ---
+tenacity==9.0.0
+
+# --- Caching (optional, only used if REDIS_URL is set) ---
+redis==5.2.1
+
+# --- Observability (optional OpenTelemetry hooks) ---
+opentelemetry-api==1.29.0
+opentelemetry-sdk==1.29.0
+opentelemetry-instrumentation-fastapi==0.50b0
+
+# --- Env file support ---
+python-dotenv==1.0.1
+
+# --- Testing ---
+pytest==8.3.4
+pytest-asyncio==0.25.1
+pytest-cov==6.0.0
+respx==0.22.0
+
+# --- Lint / format / type-check ---
+ruff==0.8.6
+black==24.10.0
+mypy==1.14.1
