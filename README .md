@@ -169,8 +169,8 @@ Full endpoint index: `docs/api.md`. Interactive docs: `/docs` and `/redoc`.
 ## Installation
 
 ```bash
-git clone https://github.com/<your-org>/databricks-connector.git
-cd databricks-connector
+git clone https://github.com/DwaipayanDutta/Databricks.git
+cd Databricks
 
 python -m venv .venv
 source .venv/bin/activate      # Windows: .venv\Scripts\activate
