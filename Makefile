@@ -1,4 +1,4 @@
-.PHONY: install install-dev run dev test lint format typecheck docker-build docker-run clean
+.PHONY: install install-dev run dev test lint format typecheck security docker-build docker-run clean
 
 install:
 	pip install -r requirements.txt
@@ -8,10 +8,10 @@ install-dev:
 	pip install -e .
 
 run:
-	python main.py
+	python -m databricks_connector.main
 
 dev:
-	uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+	uvicorn databricks_connector.main:app --host 0.0.0.0 --port 8000 --reload
 
 test:
 	pytest -v
@@ -24,7 +24,11 @@ format:
 	ruff check --fix .
 
 typecheck:
-	mypy .
+	mypy --strict databricks_connector tests
+
+security:
+	bandit -r databricks_connector -c pyproject.toml
+	pip-audit
 
 docker-build:
 	docker build -t databricks-connector:latest .
@@ -34,4 +38,4 @@ docker-run:
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-	rm -rf .pytest_cache .mypy_cache .ruff_cache htmlcov .coverage dist build *.egg-info
+	rm -rf .pytest_cache .mypy_cache .ruff_cache htmlcov .coverage dist build *.egg-info databricks_connector/*.egg-info

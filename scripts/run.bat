@@ -1,4 +1,3 @@
 @echo off
 cd /d "%~dp0\.."
-set PYTHONPATH=.
-python main.py
+python -m databricks_connector.main

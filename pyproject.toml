@@ -4,20 +4,24 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "databricks-connector"
-version = "1.0.0"
+version = "1.0.2"
 description = "Enterprise FastAPI connector exposing the full Databricks REST API surface for Multi-Agent AI Platforms."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [{ name = "Platform Engineering" }]
 dependencies = [
-    "fastapi==0.115.6",
+    "fastapi==0.141.1",
     "uvicorn[standard]==0.34.0",
     "pydantic==2.10.4",
     "pydantic-settings==2.7.1",
     "httpx==0.28.1",
     "tenacity==9.0.0",
+    "prometheus-client==0.21.1",
 ]
+
+[project.scripts]
+databricks-connector = "databricks_connector.main:run"
 
 [project.optional-dependencies]
 cache = ["redis==5.2.1"]
@@ -27,17 +31,26 @@ otel = [
     "opentelemetry-instrumentation-fastapi==0.50b0",
 ]
 dev = [
-    "pytest==8.3.4",
-    "pytest-asyncio==0.25.1",
+    "pytest==9.0.3",
+    "pytest-asyncio==1.4.0",
     "pytest-cov==6.0.0",
     "respx==0.22.0",
     "ruff==0.8.6",
-    "black==24.10.0",
+    "black==26.3.1",
     "mypy==1.14.1",
+    "types-redis==4.6.0.20241004",
+    "bandit==1.8.0",
+    "pip-audit==2.7.3",
 ]
 
+# Package discovery: `databricks_connector` is the sole importable package;
+# `core`, `routers`, `services`, `schemas` are its submodules, not
+# separate top-level packages. This is what makes `pip install -e .` +
+# `import databricks_connector.core.config` work from any working
+# directory, instead of relying on the repo root happening to be on
+# sys.path / PYTHONPATH.
 [tool.setuptools.packages.find]
-include = ["core*", "routers*", "services*", "schemas*"]
+include = ["databricks_connector*"]
 
 [tool.black]
 line-length = 110
@@ -55,11 +68,17 @@ ignore = ["B008"]
 
 [tool.mypy]
 python_version = "3.12"
+strict = true
 ignore_missing_imports = true
-disallow_untyped_defs = false
-warn_unused_ignores = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-addopts = "--cov=core --cov=services --cov=routers --cov-report=term-missing"
+addopts = "--cov=databricks_connector --cov-report=term-missing"
+
+[tool.bandit]
+exclude_dirs = ["tests", ".venv"]
+# B104 (bind-all-interfaces): HOST defaults to 0.0.0.0 intentionally --
+# this is a containerized service meant to be reachable from outside its
+# container network namespace; that is the deployment model, not a bug.
+skips = ["B104"]

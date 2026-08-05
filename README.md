@@ -22,7 +22,7 @@ Designed to run as a standalone microservice or as an enterprise connector insid
 
 - Production-ready, fully async FastAPI service
 - Strictly typed throughout (Python 3.12, `mypy`-clean)
-- 139 API endpoints across 13 route groups covering the full Databricks REST API surface
+- 139 API endpoints across 14 route groups (13 Databricks API groups + Prometheus metrics) covering the full Databricks REST API surface
 - Layered architecture: Router → Service → `DatabricksClient` → Databricks REST API
 - Shared, pooled, singleton `DatabricksClient` with graceful shutdown
 - 5 authentication modes with automatic token refresh
@@ -34,7 +34,8 @@ Designed to run as a standalone microservice or as an enterprise connector insid
 - Health, readiness, and liveness endpoints
 - Docker + docker-compose, non-root runtime image
 - GitHub Actions CI (ruff, black, mypy, pytest + coverage)
-- 94 tests, 83% coverage, no real network I/O in the test suite
+- 115 tests, 87% coverage, no real network I/O in the test suite
+- `mypy --strict` clean across the whole codebase; `bandit` and `pip-audit` clean
 
 ---
 
@@ -82,42 +83,49 @@ databricks_connector/
 ├── main.py                  uvicorn entrypoint
 ├── requirements.txt         Runtime dependencies
 ├── requirements-dev.txt     + testing / lint / type-check tooling
-├── pyproject.toml           Package metadata, ruff/black/mypy/pytest config
+├── pyproject.toml           Package metadata, ruff/black/mypy(strict)/pytest config
 ├── setup.py                 Legacy setuptools entrypoint
-├── Dockerfile                Multi-stage, non-root runtime image
+├── Dockerfile                Multi-stage, non-root runtime image (installs the real package)
 ├── docker-compose.yml       Connector + Redis
-├── Makefile                 install / run / test / lint / format / docker targets
+├── Makefile                 install / run / test / lint / format / security / docker targets
 ├── .env.example
 ├── .dockerignore
 ├── CHANGELOG.md
 ├── LICENSE
 │
-├── core/
-│   ├── config.py             Typed Settings (pydantic-settings)
-│   ├── auth.py                AuthManager + 5 TokenProvider strategies
-│   ├── client.py              DatabricksClient (pooled, singleton, retried)
-│   ├── retry.py                Tenacity retry policy + Retry-After support
-│   ├── circuit_breaker.py     Async-safe circuit breaker
-│   ├── exceptions.py           Exception hierarchy + status-code mapping
-│   ├── logging.py              Structured JSON logging
-│   ├── middleware.py           Correlation / timing / request-logging / exception middleware
-│   ├── dependencies.py         Shared ContextVars + FastAPI dependencies
-│   ├── cache.py                 Optional Redis / in-memory response cache
-│   └── constants.py
+├── databricks_connector/     The installable package (import as `databricks_connector.*`)
+│   ├── __init__.py
+│   ├── app.py                 FastAPI app factory (create_app), middleware, lifespan
+│   ├── main.py                 uvicorn entrypoint
+│   │
+│   ├── core/
+│   │   ├── config.py             Typed Settings (pydantic-settings), fail-fast validation
+│   │   ├── auth.py                AuthManager + 5 TokenProvider strategies
+│   │   ├── client.py              DatabricksClient (pooled, singleton, retried)
+│   │   ├── retry.py                Tenacity retry policy + Retry-After support
+│   │   ├── circuit_breaker.py     Async-safe circuit breaker
+│   │   ├── exceptions.py           Exception hierarchy + status-code mapping
+│   │   ├── logging.py              Structured JSON logging
+│   │   ├── metrics.py               Prometheus counters/histograms/gauges
+│   │   ├── middleware.py           Correlation / timing / metrics / logging / exception middleware
+│   │   ├── dependencies.py         Shared ContextVars + FastAPI dependencies
+│   │   ├── cache.py                 Optional Redis / in-memory response cache
+│   │   └── constants.py
+│   │
+│   ├── routers/                  One thin router per API group
+│   │   ├── health.py  metrics.py  jobs.py  job_runs.py  clusters.py  notebooks.py
+│   │   ├── sql.py  unity_catalog.py  dbfs.py  dlt.py  mlflow.py
+│   │   └── secrets.py  permissions.py  monitoring.py
+│   │
+│   ├── services/                 Databricks REST API domain logic
+│   │   ├── health_service.py  jobs_service.py  cluster_service.py
+│   │   ├── notebook_service.py  sql_service.py  unity_catalog_service.py
+│   │   ├── dbfs_service.py  dlt_service.py  mlflow_service.py
+│   │   ├── secrets_service.py  permissions_service.py  monitoring_service.py
+│   │   └── _common.py            Small helpers shared across services
+│   │
+│   └── schemas/                  Pydantic request/response models (extra="forbid" by default)
 │
-├── routers/                  One thin router per API group
-│   ├── health.py  jobs.py  job_runs.py  clusters.py  notebooks.py
-│   ├── sql.py  unity_catalog.py  dbfs.py  dlt.py  mlflow.py
-│   └── secrets.py  permissions.py  monitoring.py
-│
-├── services/                 Databricks REST API domain logic
-│   ├── health_service.py  jobs_service.py  cluster_service.py
-│   ├── notebook_service.py  sql_service.py  unity_catalog_service.py
-│   ├── dbfs_service.py  dlt_service.py  mlflow_service.py
-│   ├── secrets_service.py  permissions_service.py  monitoring_service.py
-│   └── _common.py            Small helpers shared across services
-│
-├── schemas/                  Pydantic request/response models
 ├── tests/                    pytest suite (mocked DatabricksClient, no real network I/O)
 ├── docs/                     architecture.md, api.md
 └── scripts/                  run.sh / run.bat / lint.sh / format.sh / test.sh
@@ -148,7 +156,7 @@ All endpoints are namespaced under `/api/v1/*` except health checks.
 
 | Group | Base path | Highlights |
 |---|---|---|
-| Health | `/health` `/ready` `/live` | Process health, Databricks reachability, liveness |
+| Health / Metrics | `/health` `/ready` `/live` `/metrics` | Process health, expanded readiness checks, liveness, Prometheus metrics |
 | Jobs | `/api/v1/jobs` | Create, update, delete, trigger, run-now, reset, repair, cancel, pause, resume, clone, export, import |
 | Job Runs | `/api/v1/job-runs` | List, get, logs, output, cancel, repair, retry, wait |
 | Clusters | `/api/v1/clusters` | Create, get, start, restart, resize, edit, terminate, permanent-delete, pin, unpin, events |
@@ -198,6 +206,11 @@ All configuration is via environment variables (or a `.env` file); see
 | `CIRCUIT_BREAKER_FAILURE_THRESHOLD` / `CIRCUIT_BREAKER_RECOVERY_TIMEOUT` | Circuit breaker tuning |
 | `CACHE_ENABLED` / `REDIS_URL` | Optional response caching |
 | `CONNECTOR_API_KEY` | If set, callers must send a matching `X-API-Key` header |
+| `HTTP_MAX_CONNECTIONS` / `HTTP_MAX_KEEPALIVE_CONNECTIONS` / `HTTP_KEEPALIVE_EXPIRY_SECONDS` | Connection pool tuning |
+
+Configuration is validated **fail-fast**: the process refuses to start if
+required fields for the selected `AUTH_MODE` are missing, or if
+`DATABRICKS_HOST` isn't a valid URL.
 
 ---
 
@@ -206,7 +219,7 @@ All configuration is via environment variables (or a `.env` file); see
 Development (auto-reload):
 
 ```bash
-uvicorn main:app --reload
+uvicorn databricks_connector.main:app --reload
 # or
 make dev
 ```
@@ -214,28 +227,30 @@ make dev
 Simple single-process run (uses `HOST`/`PORT` from settings):
 
 ```bash
-python main.py
+python -m databricks_connector.main
 # or
 make run
+# or, after `pip install`, the console entry point:
+databricks-connector
 ```
 
 Using the FastAPI factory directly:
 
 ```bash
-uvicorn app:create_app --factory
+uvicorn databricks_connector.app:create_app --factory
 ```
 
 Production (matches the Dockerfile's `CMD`):
 
 ```bash
-uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
+uvicorn databricks_connector.main:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 
 Or with gunicorn as a process manager (not bundled — install separately:
 `pip install gunicorn`):
 
 ```bash
-gunicorn app:app -k uvicorn.workers.UvicornWorker -w 4
+gunicorn databricks_connector.app:app -k uvicorn.workers.UvicornWorker -w 4
 ```
 
 The API is then available at `http://localhost:8000`.
@@ -256,8 +271,9 @@ http://localhost:8000/openapi.json
 
 ```
 GET /health   process-level liveness, no external calls
-GET /ready    circuit breaker state + Databricks reachability probe
+GET /ready    circuit breaker + Databricks auth/connectivity + cache checks
 GET /live     liveness probe for orchestrators
+GET /metrics  Prometheus text-format metrics
 ```
 
 ---
@@ -329,13 +345,13 @@ make test
 # or
 scripts/test.sh
 # or directly
-pytest -v --cov=core --cov=services --cov=routers --cov-report=term-missing
+pytest -v --cov=databricks_connector --cov-report=term-missing
 ```
 
 The suite mocks the Databricks HTTP layer (a fake `DatabricksClient` for
 router tests, `respx` for lower-level `httpx`/auth tests) so it runs fully
-offline. Current state: **94 tests passing, 83% coverage** across `core/`,
-`services/`, and `routers/`.
+offline. Current state: **115 tests passing, 87% coverage** across
+`core/`, `services/`, `routers/`, and `schemas/`.
 
 ---
 

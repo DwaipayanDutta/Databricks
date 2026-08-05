@@ -9,6 +9,7 @@ performing real network I/O.
 from __future__ import annotations
 
 import os
+from collections.abc import Generator
 from unittest.mock import AsyncMock
 
 import pytest
@@ -18,8 +19,8 @@ os.environ.setdefault("DATABRICKS_HOST", "https://example.cloud.databricks.com")
 os.environ.setdefault("DATABRICKS_TOKEN", "dummy-token-for-tests")
 os.environ.setdefault("AUTH_MODE", "pat")
 
-from app import create_app  # noqa: E402
-from core.client import get_databricks_client  # noqa: E402
+from databricks_connector.app import create_app  # noqa: E402
+from databricks_connector.core.client import get_databricks_client  # noqa: E402
 
 
 class FakeDatabricksClient:
@@ -42,7 +43,7 @@ def fake_client() -> FakeDatabricksClient:
 
 
 @pytest.fixture
-def client(fake_client: FakeDatabricksClient) -> TestClient:
+def client(fake_client: FakeDatabricksClient) -> Generator[TestClient, None, None]:
     app = create_app()
     app.dependency_overrides[get_databricks_client] = lambda: fake_client
     with TestClient(app) as test_client:

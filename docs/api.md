@@ -10,13 +10,14 @@ This document is a quick-reference index of every endpoint grouped by API
 area. All request/response bodies are documented in Swagger with full
 Pydantic-generated JSON Schemas and examples.
 
-## Health (`/health`, `/ready`, `/live`)
+## Health (`/health`, `/ready`, `/live`, `/metrics`)
 
 | Method | Path | Description |
 |---|---|---|
 | GET | `/health` | Basic process health. |
-| GET | `/ready` | Readiness: circuit breaker state + Databricks reachability. |
+| GET | `/ready` | Readiness: circuit breaker, Databricks authentication, Databricks connectivity, cache backend. |
 | GET | `/live` | Liveness probe. |
+| GET | `/metrics` | Prometheus text-format metrics. |
 
 ## Jobs (`/api/v1/jobs`)
 

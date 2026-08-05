@@ -3,9 +3,9 @@
 # mypy shipped to production).
 
 # --- Web framework ---
-fastapi==0.115.6
+fastapi==0.141.1
 uvicorn[standard]==0.34.0
-starlette==0.41.3
+starlette==1.4.0
 
 # --- Data validation / settings ---
 pydantic==2.10.4
@@ -17,6 +17,9 @@ httpx==0.28.1
 # --- Retry / resiliency ---
 tenacity==9.0.0
 
+# --- Metrics ---
+prometheus-client==0.21.1
+
 # --- Caching (optional, only used if REDIS_URL is set) ---
 redis==5.2.1
 
@@ -26,4 +29,4 @@ opentelemetry-sdk==1.29.0
 opentelemetry-instrumentation-fastapi==0.50b0
 
 # --- Env file support ---
-python-dotenv==1.0.1
+python-dotenv==1.2.2

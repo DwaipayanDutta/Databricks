@@ -26,7 +26,8 @@ htmlcov/
 .coverage
 
 # Docs / misc (not needed at runtime)
+# NOTE: README.md IS needed during the pip build step (pyproject.toml
+# declares it as the package's `readme`), so it must not be excluded here.
 docs/
-README.md
 CHANGELOG.md
 tests/

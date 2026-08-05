@@ -19,7 +19,7 @@ FastAPI Router            (routers/*.py)
 Service Layer              (services/*.py)
   │  encodes Databricks REST semantics (endpoints, payload shape)
   ▼
-DatabricksClient            (core/client.py)
+DatabricksClient            (databricks_connector/core/client.py)
   │  auth, retries, circuit breaking, correlation IDs, response parsing
   ▼
 Databricks REST API
@@ -36,7 +36,7 @@ This separation means:
   talks to Databricks over the network: authentication headers, retries,
   circuit breaking, timeouts, correlation IDs, and error translation.
 
-## Core building blocks (`core/`)
+## Core building blocks (`databricks_connector/core/`)
 
 | Module | Responsibility |
 |---|---|
@@ -54,8 +54,8 @@ This separation means:
 
 ## Authentication
 
-`AuthMode` (in `core/config.py`) selects one of five `TokenProvider`
-implementations in `core/auth.py`:
+`AuthMode` (in `databricks_connector/core/config.py`) selects one of five `TokenProvider`
+implementations in `databricks_connector/core/auth.py`:
 
 * **PAT** — static personal access token.
 * **OAuth** — client-credentials flow against Databricks' OIDC token
@@ -72,10 +72,10 @@ caches its token in memory, refreshing ~60 seconds before expiry.
 
 ## Resiliency
 
-* **Retries** (`core/retry.py`): exponential backoff with jitter, applied
+* **Retries** (`databricks_connector/core/retry.py`): exponential backoff with jitter, applied
   only to retryable statuses (429/500/502/503/504) and transient network
   errors. Non-retryable errors (400/401/403/404/409) fail fast.
-* **Circuit breaker** (`core/circuit_breaker.py`): after N consecutive
+* **Circuit breaker** (`databricks_connector/core/circuit_breaker.py`): after N consecutive
   failures the breaker opens and short-circuits calls for a recovery
   window, then allows a single trial call (HALF_OPEN) before fully
   closing again.
@@ -125,13 +125,29 @@ CORSMiddleware
 ## Directory layout
 
 ```
-databricks_connector/
-├── app.py / main.py        FastAPI app factory + uvicorn entrypoint
-├── core/                   Cross-cutting infrastructure (see table above)
-├── routers/                Thin HTTP-layer endpoints (one file per API group)
-├── services/                Databricks REST API domain logic
-├── schemas/                Pydantic request/response models
-├── tests/                  pytest suite (mocked DatabricksClient, no real network I/O)
-├── docs/                   This file + docs/api.md
-└── scripts/                Convenience scripts (run/lint/format/test)
+<repo root>/
+├── pyproject.toml / setup.py / requirements*.txt
+├── Dockerfile / docker-compose.yml / Makefile
+├── databricks_connector/       The installable package
+│   ├── app.py / main.py          FastAPI app factory + uvicorn entrypoint
+│   ├── core/                     Cross-cutting infrastructure (see table above)
+│   ├── routers/                  Thin HTTP-layer endpoints (one file per API group)
+│   ├── services/                  Databricks REST API domain logic
+│   └── schemas/                  Pydantic request/response models
+├── tests/                      pytest suite (mocked DatabricksClient, no real network I/O)
+├── docs/                       This file + docs/api.md
+└── scripts/                    Convenience scripts (run/lint/format/test)
 ```
+
+## Observability
+
+* **Prometheus metrics** (`databricks_connector/core/metrics.py`, exposed
+  at `GET /metrics`): counters/histograms for both the connector's own
+  HTTP traffic and its calls to Databricks, plus a circuit-breaker state
+  gauge. Connector-side traffic is labeled with each route's *templated*
+  path (e.g. `/api/v1/jobs/{job_id}`), not the resolved path, to keep
+  label cardinality bounded.
+* **Readiness checks** (`GET /ready`) independently report circuit
+  breaker state, Databricks authentication, Databricks connectivity, and
+  the optional cache backend, so a 401 (bad credentials) and a 503
+  (Databricks down) are distinguishable at a glance.

@@ -13,12 +13,14 @@ import httpx
 import pytest
 import respx
 
-from core.auth import BearerTokenProvider, PATTokenProvider
-from core.cache import CacheClient
-from core.circuit_breaker import CircuitBreaker, CircuitState
-from core.config import AuthMode, Settings
-from core.exceptions import CircuitBreakerOpenError, ConfigurationError
-from core.retry import _parse_retry_after
+from databricks_connector.core.auth import BearerTokenProvider, PATTokenProvider
+from databricks_connector.core.cache import CacheClient
+from databricks_connector.core.circuit_breaker import CircuitBreaker, CircuitState
+from databricks_connector.core.config import AuthMode, Settings
+from databricks_connector.core.exceptions import CircuitBreakerOpenError, ConfigurationError
+from databricks_connector.core.retry import _parse_retry_after
+
+_HOST = "https://example.cloud.databricks.com"
 
 
 def test_pat_token_provider_returns_static_token() -> None:
@@ -104,7 +106,13 @@ async def test_circuit_breaker_half_open_allows_single_trial_only() -> None:
     outcomes = [v[0] for v in results.values()]
     assert outcomes.count("success") == 1
     assert outcomes.count("blocked") == 2
-    assert breaker.state == CircuitState.CLOSED
+    # mypy narrows `breaker.state` to Literal[CircuitState.OPEN] from the
+    # assertion earlier in this function and doesn't account for the
+    # `await`s in between actually mutating it -- a known false positive
+    # for property-based enum narrowing across async control flow. The
+    # runtime behavior is correct (verified by this test passing): the
+    # circuit closes after the successful half-open trial.
+    assert breaker.state == CircuitState.CLOSED  # type: ignore[comparison-overlap]
 
 
 @pytest.mark.asyncio
@@ -182,10 +190,27 @@ async def test_cache_disabled_is_noop() -> None:
 
 
 @pytest.mark.asyncio
+async def test_databricks_client_reconnects_after_close() -> None:
+    """A closed DatabricksClient must transparently open a fresh connection
+    pool on the next request rather than staying dead."""
+    from databricks_connector.core.client import DatabricksClient
+
+    client = DatabricksClient()
+    http1 = await client._get_http()
+    await client.aclose()
+    assert http1.is_closed
+
+    http2 = await client._get_http()
+    assert not http2.is_closed
+    assert http2 is not http1
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 @respx.mock
 async def test_databricks_client_get_success() -> None:
-    from core.auth import AuthManager
-    from core.client import DatabricksClient
+    from databricks_connector.core.auth import AuthManager
+    from databricks_connector.core.client import DatabricksClient
 
     settings = Settings(
         databricks_host="https://example.cloud.databricks.com",
@@ -210,9 +235,9 @@ async def test_databricks_client_get_success() -> None:
 @pytest.mark.asyncio
 @respx.mock
 async def test_databricks_client_maps_404() -> None:
-    from core.auth import AuthManager
-    from core.client import DatabricksClient
-    from core.exceptions import NotFoundError
+    from databricks_connector.core.auth import AuthManager
+    from databricks_connector.core.client import DatabricksClient
+    from databricks_connector.core.exceptions import NotFoundError
 
     settings = Settings(
         databricks_host="https://example.cloud.databricks.com",
@@ -238,7 +263,7 @@ async def test_get_databricks_client_singleton_thread_safe() -> None:
     """get_databricks_client() must return the exact same instance even when
     called concurrently from many coroutines (guards against the
     check-then-set race on the module-level singleton)."""
-    import core.client as client_module
+    import databricks_connector.core.client as client_module
 
     client_module._client = None  # reset singleton for a clean test
     try:
@@ -252,7 +277,7 @@ async def test_get_databricks_client_singleton_thread_safe() -> None:
 
 @pytest.mark.asyncio
 async def test_close_databricks_client_is_idempotent() -> None:
-    import core.client as client_module
+    import databricks_connector.core.client as client_module
 
     client_module._client = None
     client_module.get_databricks_client()
@@ -288,47 +313,54 @@ async def test_token_provider_refresh_is_single_flight() -> None:
 async def test_health_service_ready_when_databricks_reachable() -> None:
     from unittest.mock import AsyncMock
 
-    from services.health_service import HealthService
+    from databricks_connector.services.health_service import HealthService
 
     fake_client = AsyncMock()
     fake_client.get.return_value = {}
-    service = HealthService(fake_client)
+    service = HealthService(
+        fake_client, Settings(databricks_host=_HOST, auth_mode=AuthMode.PAT, databricks_token="t")
+    )
     result = await service.check_readiness()
     assert result["status"] == "ready"
-    assert result["dependencies"]["databricks_api"] == "reachable"
+    assert result["dependencies"]["databricks_authentication"] == "ok"
+    assert result["dependencies"]["databricks_connectivity"] == "reachable"
 
 
 @pytest.mark.asyncio
 async def test_health_service_not_ready_on_connector_error() -> None:
     from unittest.mock import AsyncMock
 
-    from core.exceptions import ServiceUnavailableError
-    from services.health_service import HealthService
+    from databricks_connector.core.exceptions import ServiceUnavailableError
+    from databricks_connector.services.health_service import HealthService
 
     fake_client = AsyncMock()
     fake_client.get.side_effect = ServiceUnavailableError("down")
-    service = HealthService(fake_client)
+    service = HealthService(
+        fake_client, Settings(databricks_host=_HOST, auth_mode=AuthMode.PAT, databricks_token="t")
+    )
     result = await service.check_readiness()
     assert result["status"] == "not_ready"
-    assert "service_unavailable" in result["dependencies"]["databricks_api"]
+    assert "service_unavailable" in result["dependencies"]["databricks_connectivity"]
 
 
 @pytest.mark.asyncio
 async def test_health_service_not_ready_on_unexpected_error() -> None:
     from unittest.mock import AsyncMock
 
-    from services.health_service import HealthService
+    from databricks_connector.services.health_service import HealthService
 
     fake_client = AsyncMock()
     fake_client.get.side_effect = RuntimeError("boom")
-    service = HealthService(fake_client)
+    service = HealthService(
+        fake_client, Settings(databricks_host=_HOST, auth_mode=AuthMode.PAT, databricks_token="t")
+    )
     result = await service.check_readiness()
     assert result["status"] == "not_ready"
-    assert result["dependencies"]["databricks_api"] == "unreachable"
+    assert result["dependencies"]["databricks_connectivity"] == "unreachable"
 
 
 def test_exception_status_code_map_covers_documented_codes() -> None:
-    from core.exceptions import (
+    from databricks_connector.core.exceptions import (
         AuthenticationError,
         AuthorizationError,
         ConflictError,
@@ -357,10 +389,10 @@ def test_exception_status_code_map_covers_documented_codes() -> None:
 
 
 @pytest.mark.asyncio
-async def test_oauth_token_provider_fetches_and_caches(respx_mock=None) -> None:
+async def test_oauth_token_provider_fetches_and_caches() -> None:
     import respx
 
-    from core.auth import OAuthTokenProvider
+    from databricks_connector.core.auth import OAuthTokenProvider
 
     with respx.mock:
         route = respx.post("https://example.cloud.databricks.com/oidc/v1/token").mock(
@@ -383,14 +415,14 @@ async def test_oauth_token_provider_fetches_and_caches(respx_mock=None) -> None:
 
 
 def test_oauth_token_provider_requires_credentials() -> None:
-    from core.auth import OAuthTokenProvider
+    from databricks_connector.core.auth import OAuthTokenProvider
 
     with pytest.raises(ConfigurationError):
         OAuthTokenProvider(client_id="", client_secret="", token_url="", scope="all-apis")
 
 
 def test_azure_service_principal_requires_credentials() -> None:
-    from core.auth import AzureServicePrincipalTokenProvider
+    from databricks_connector.core.auth import AzureServicePrincipalTokenProvider
 
     with pytest.raises(ConfigurationError):
         AzureServicePrincipalTokenProvider(tenant_id="", client_id="", client_secret="", resource_id="r")
@@ -400,7 +432,7 @@ def test_azure_service_principal_requires_credentials() -> None:
 async def test_managed_identity_token_provider_fetches_token() -> None:
     import respx
 
-    from core.auth import ManagedIdentityTokenProvider
+    from databricks_connector.core.auth import ManagedIdentityTokenProvider
 
     with respx.mock:
         respx.get("http://169.254.169.254/metadata/identity/oauth2/token").mock(
@@ -416,7 +448,7 @@ async def test_managed_identity_token_provider_fetches_token() -> None:
 
 
 def test_auth_manager_builds_correct_provider_per_mode() -> None:
-    from core.auth import (
+    from databricks_connector.core.auth import (
         AuthManager,
         AzureServicePrincipalTokenProvider,
         BearerTokenProvider,
@@ -425,16 +457,16 @@ def test_auth_manager_builds_correct_provider_per_mode() -> None:
         PATTokenProvider,
     )
 
-    base_kwargs = {"databricks_host": "https://example.cloud.databricks.com"}
+    _host = "https://example.cloud.databricks.com"
 
-    pat_settings = Settings(**base_kwargs, auth_mode=AuthMode.PAT, databricks_token="tok")
+    pat_settings = Settings(databricks_host=_host, auth_mode=AuthMode.PAT, databricks_token="tok")
     assert isinstance(AuthManager(pat_settings)._provider, PATTokenProvider)
 
-    bearer_settings = Settings(**base_kwargs, auth_mode=AuthMode.BEARER, bearer_token="tok")
+    bearer_settings = Settings(databricks_host=_host, auth_mode=AuthMode.BEARER, bearer_token="tok")
     assert isinstance(AuthManager(bearer_settings)._provider, BearerTokenProvider)
 
     oauth_settings = Settings(
-        **base_kwargs,
+        databricks_host=_host,
         auth_mode=AuthMode.OAUTH,
         databricks_client_id="id",
         databricks_client_secret="secret",
@@ -442,7 +474,7 @@ def test_auth_manager_builds_correct_provider_per_mode() -> None:
     assert isinstance(AuthManager(oauth_settings)._provider, OAuthTokenProvider)
 
     sp_settings = Settings(
-        **base_kwargs,
+        databricks_host=_host,
         auth_mode=AuthMode.AZURE_SERVICE_PRINCIPAL,
         azure_tenant_id="t",
         azure_client_id="c",
@@ -450,13 +482,31 @@ def test_auth_manager_builds_correct_provider_per_mode() -> None:
     )
     assert isinstance(AuthManager(sp_settings)._provider, AzureServicePrincipalTokenProvider)
 
-    mi_settings = Settings(**base_kwargs, auth_mode=AuthMode.MANAGED_IDENTITY)
+    mi_settings = Settings(databricks_host=_host, auth_mode=AuthMode.MANAGED_IDENTITY)
     assert isinstance(AuthManager(mi_settings)._provider, ManagedIdentityTokenProvider)
 
 
 @pytest.mark.asyncio
+async def test_health_service_reports_auth_failure_distinctly() -> None:
+    from unittest.mock import AsyncMock
+
+    from databricks_connector.core.exceptions import AuthenticationError
+    from databricks_connector.services.health_service import HealthService
+
+    fake_client = AsyncMock()
+    fake_client.get.side_effect = AuthenticationError("bad token")
+    service = HealthService(
+        fake_client, Settings(databricks_host=_HOST, auth_mode=AuthMode.PAT, databricks_token="t")
+    )
+    result = await service.check_readiness()
+    assert result["status"] == "not_ready"
+    assert "authentication_error" in result["dependencies"]["databricks_authentication"]
+    assert result["dependencies"]["databricks_connectivity"] == "unknown"
+
+
+@pytest.mark.asyncio
 async def test_auth_manager_get_auth_header() -> None:
-    from core.auth import AuthManager
+    from databricks_connector.core.auth import AuthManager
 
     settings = Settings(
         databricks_host="https://example.cloud.databricks.com",
@@ -467,3 +517,33 @@ async def test_auth_manager_get_auth_header() -> None:
     headers = await manager.get_auth_header()
     assert headers == {"Authorization": "Bearer dapi-secret"}
     manager.invalidate()  # should not raise
+
+
+def test_settings_fails_fast_on_missing_pat_token() -> None:
+    # Explicitly pass an empty token to override any DATABRICKS_TOKEN set in
+    # the environment (conftest.py sets one for the rest of the suite).
+    with pytest.raises(Exception, match="DATABRICKS_TOKEN"):
+        Settings(
+            databricks_host="https://example.cloud.databricks.com",
+            auth_mode=AuthMode.PAT,
+            databricks_token="",
+        )
+
+
+def test_settings_fails_fast_on_missing_oauth_credentials() -> None:
+    with pytest.raises(Exception, match="DATABRICKS_CLIENT_ID"):
+        Settings(databricks_host="https://example.cloud.databricks.com", auth_mode=AuthMode.OAUTH)
+
+
+def test_settings_fails_fast_on_invalid_host() -> None:
+    with pytest.raises(Exception, match="DATABRICKS_HOST"):
+        Settings(databricks_host="not-a-url", auth_mode=AuthMode.PAT, databricks_token="tok")
+
+
+def test_settings_accepts_valid_pat_config() -> None:
+    settings = Settings(
+        databricks_host="https://example.cloud.databricks.com",
+        auth_mode=AuthMode.PAT,
+        databricks_token="tok",
+    )
+    assert settings.auth_mode == AuthMode.PAT

@@ -183,3 +183,23 @@ def test_cluster_and_job_health(client: TestClient, fake_client: FakeDatabricksC
 def test_connector_info_and_config(client: TestClient) -> None:
     assert client.get("/api/v1/monitoring/connector/info").status_code == 200
     assert client.get("/api/v1/monitoring/connector/config").status_code == 200
+
+
+def test_list_catalogs_with_pagination(client: TestClient, fake_client: FakeDatabricksClient) -> None:
+    fake_client.get.return_value = {"catalogs": []}
+    response = client.get("/api/v1/unity-catalog/catalogs", params={"max_results": 10, "page_token": "tok"})
+    assert response.status_code == 200
+    _, kwargs = fake_client.get.call_args
+    assert kwargs["params"]["max_results"] == 10
+    assert kwargs["params"]["page_token"] == "tok"
+
+
+def test_list_tables_with_pagination(client: TestClient, fake_client: FakeDatabricksClient) -> None:
+    fake_client.get.return_value = {"tables": []}
+    response = client.get(
+        "/api/v1/unity-catalog/tables",
+        params={"catalog_name": "main", "schema_name": "default", "max_results": 5},
+    )
+    assert response.status_code == 200
+    _, kwargs = fake_client.get.call_args
+    assert kwargs["params"]["max_results"] == 5

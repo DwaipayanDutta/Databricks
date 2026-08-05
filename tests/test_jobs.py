@@ -65,10 +65,38 @@ def test_get_run_logs(client: TestClient, fake_client: FakeDatabricksClient) -> 
 
 
 def test_job_error_propagation(client: TestClient, fake_client: FakeDatabricksClient) -> None:
-    from core.exceptions import NotFoundError
+    from databricks_connector.core.exceptions import NotFoundError
 
     fake_client.get.side_effect = NotFoundError("Job not found")
     response = client.get("/api/v1/jobs/999999")
     assert response.status_code == 404
     body = response.json()
     assert body["error"] == "not_found"
+
+
+def test_wait_for_run_uses_path_run_id_with_default_body(
+    client: TestClient, fake_client: FakeDatabricksClient
+) -> None:
+    """Regression test: WaitForRunRequest no longer has a (previously
+    ignored) run_id field, and the endpoint works with an empty body,
+    using the path parameter as the single source of truth."""
+    fake_client.get.return_value = {"state": {"life_cycle_state": "TERMINATED"}}
+    response = client.post("/api/v1/job-runs/42/wait", json={})
+    assert response.status_code == 200
+    args, kwargs = fake_client.get.call_args
+    assert kwargs["params"]["run_id"] == 42
+
+
+def test_wait_for_run_custom_timeout(client: TestClient, fake_client: FakeDatabricksClient) -> None:
+    fake_client.get.return_value = {"state": {"life_cycle_state": "SKIPPED"}}
+    response = client.post(
+        "/api/v1/job-runs/7/wait", json={"timeout_seconds": 30, "poll_interval_seconds": 1}
+    )
+    assert response.status_code == 200
+
+
+def test_trigger_job_rejects_unknown_field(client: TestClient, fake_client: FakeDatabricksClient) -> None:
+    """Regression test for extra='forbid' hardening: an unexpected field in
+    the request body should be a clear 422, not silently ignored."""
+    response = client.post("/api/v1/jobs/trigger", json={"job_id": 5, "totally_made_up_field": "oops"})
+    assert response.status_code == 422

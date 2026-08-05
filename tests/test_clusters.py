@@ -62,3 +62,33 @@ def test_list_node_types(client: TestClient, fake_client: FakeDatabricksClient) 
     fake_client.get.return_value = {"node_types": []}
     response = client.get("/api/v1/clusters/meta/node-types")
     assert response.status_code == 200
+
+
+def test_list_clusters_with_pagination(client: TestClient, fake_client: FakeDatabricksClient) -> None:
+    fake_client.get.return_value = {"clusters": [], "next_page_token": "tok"}
+    response = client.get("/api/v1/clusters", params={"page_token": "abc", "limit": 10})
+    assert response.status_code == 200
+    _, kwargs = fake_client.get.call_args
+    assert kwargs["params"]["page_token"] == "abc"
+    assert kwargs["params"]["limit"] == 10
+
+
+def test_get_cluster_events_uses_token_pagination(
+    client: TestClient, fake_client: FakeDatabricksClient
+) -> None:
+    """Regression test: Databricks is deprecating limit/offset on the
+    cluster events endpoint in favor of page_size/page_token."""
+    fake_client.post.return_value = {"events": []}
+    response = client.get("/api/v1/clusters/abc/events", params={"page_size": 25})
+    assert response.status_code == 200
+    _, kwargs = fake_client.post.call_args
+    assert kwargs["json_body"]["page_size"] == 25
+    assert "limit" not in kwargs["json_body"]
+    assert "offset" not in kwargs["json_body"]
+
+
+def test_resize_cluster_rejects_unknown_field(client: TestClient, fake_client: FakeDatabricksClient) -> None:
+    response = client.post(
+        "/api/v1/clusters/resize", json={"cluster_id": "abc", "num_workers": 2, "bogus_field": True}
+    )
+    assert response.status_code == 422
