@@ -209,3 +209,53 @@ def test_list_tables_with_pagination(client: TestClient, fake_client: FakeDatabr
     assert response.status_code == 200
     _, kwargs = fake_client.get.call_args
     assert kwargs["params"]["max_results"] == 5
+
+
+def test_uc_get_and_delete_table(client: TestClient, fake_client: FakeDatabricksClient) -> None:
+    fake_client.get.return_value = {"full_name": "main.default.t1"}
+    assert client.get("/api/v1/unity-catalog/tables/main.default.t1").status_code == 200
+    fake_client.delete.return_value = {}
+    assert client.delete("/api/v1/unity-catalog/tables/main.default.t1").status_code == 200
+
+
+def test_uc_volumes_crud(client: TestClient, fake_client: FakeDatabricksClient) -> None:
+    fake_client.post.return_value = {"full_name": "main.default.v1"}
+    payload = {"name": "v1", "catalog_name": "main", "schema_name": "default", "volume_type": "MANAGED"}
+    assert client.post("/api/v1/unity-catalog/volumes", json=payload).status_code == 200
+    fake_client.get.return_value = {"full_name": "main.default.v1"}
+    assert client.get("/api/v1/unity-catalog/volumes/main.default.v1").status_code == 200
+    fake_client.delete.return_value = {}
+    assert client.delete("/api/v1/unity-catalog/volumes/main.default.v1").status_code == 200
+
+
+def test_uc_get_and_delete_function(client: TestClient, fake_client: FakeDatabricksClient) -> None:
+    fake_client.get.return_value = {"full_name": "main.default.f1"}
+    assert client.get("/api/v1/unity-catalog/functions/main.default.f1").status_code == 200
+    fake_client.delete.return_value = {}
+    assert client.delete("/api/v1/unity-catalog/functions/main.default.f1").status_code == 200
+
+
+def test_uc_delete_catalog_and_schema(client: TestClient, fake_client: FakeDatabricksClient) -> None:
+    fake_client.delete.return_value = {}
+    assert client.delete("/api/v1/unity-catalog/catalogs/main", params={"force": True}).status_code == 200
+    assert (
+        client.delete("/api/v1/unity-catalog/schemas/main.default", params={"force": True}).status_code
+        == 200
+    )
+
+
+def test_uc_external_location_and_storage_credential_lifecycle(
+    client: TestClient, fake_client: FakeDatabricksClient
+) -> None:
+    fake_client.get.return_value = {"name": "loc1"}
+    assert client.get("/api/v1/unity-catalog/external-locations/loc1").status_code == 200
+    fake_client.delete.return_value = {}
+    assert client.delete("/api/v1/unity-catalog/external-locations/loc1").status_code == 200
+
+    fake_client.post.return_value = {"name": "cred1"}
+    assert (
+        client.post("/api/v1/unity-catalog/storage-credentials", json={"name": "cred1"}).status_code == 200
+    )
+    fake_client.get.return_value = {"name": "cred1"}
+    assert client.get("/api/v1/unity-catalog/storage-credentials/cred1").status_code == 200
+    assert client.delete("/api/v1/unity-catalog/storage-credentials/cred1").status_code == 200
