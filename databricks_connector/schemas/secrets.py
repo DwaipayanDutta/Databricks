@@ -35,3 +35,14 @@ class DeleteSecretRequest(_StrictModel):
 
 class ListSecretsRequest(_StrictModel):
     scope: str
+
+
+class PutAclRequest(_StrictModel):
+    scope: str
+    principal: str
+    permission: str  # MANAGE | WRITE | READ
+
+
+class DeleteAclRequest(_StrictModel):
+    scope: str
+    principal: str

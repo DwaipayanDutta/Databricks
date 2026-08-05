@@ -10,13 +10,14 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 
 from databricks_connector.core.client import close_databricks_client, get_databricks_client
 from databricks_connector.core.config import get_settings
 from databricks_connector.core.constants import CONNECTOR_NAME, CONNECTOR_VERSION
+from databricks_connector.core.dependencies import verify_connector_api_key
 from databricks_connector.core.logging import configure_logging, get_logger
 from databricks_connector.core.middleware import (
     CorrelationMiddleware,
@@ -95,10 +96,16 @@ def create_app() -> FastAPI:
     )
 
     # --- Middleware (order matters: outermost added last is innermost) ---
+    # `allow_credentials=True` combined with a literal `allow_origins=["*"]`
+    # wildcard is a spec-invalid combination browsers reject outright (and
+    # Starlette otherwise papers over in a way that's easy to misread as
+    # "working"); only send credentialed CORS headers once the operator has
+    # configured a real origin allowlist via CORS_ALLOW_ORIGINS.
+    cors_origins = settings.cors_origins_list
     application.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.cors_origins_list,
-        allow_credentials=True,
+        allow_origins=cors_origins,
+        allow_credentials=cors_origins != ["*"],
         allow_methods=["*"],
         allow_headers=["*"],
     )
@@ -110,20 +117,27 @@ def create_app() -> FastAPI:
     application.add_middleware(CorrelationMiddleware)
 
     # --- Routers ---
+    # Health/liveness/readiness and Prometheus metrics stay ungated even
+    # when CONNECTOR_API_KEY is set: orchestrators (Kubernetes probes) and
+    # scrapers (Prometheus) call these without app-level credentials, and
+    # gating them would break standard deployment tooling. Every business
+    # API group requires the key (a no-op when CONNECTOR_API_KEY is unset).
     application.include_router(health.router)
     application.include_router(metrics.router)
-    application.include_router(jobs.router)
-    application.include_router(job_runs.router)
-    application.include_router(clusters.router)
-    application.include_router(notebooks.router)
-    application.include_router(sql.router)
-    application.include_router(unity_catalog.router)
-    application.include_router(dbfs.router)
-    application.include_router(dlt.router)
-    application.include_router(mlflow.router)
-    application.include_router(secrets.router)
-    application.include_router(permissions.router)
-    application.include_router(monitoring.router)
+
+    api_key_gate = [Depends(verify_connector_api_key)]
+    application.include_router(jobs.router, dependencies=api_key_gate)
+    application.include_router(job_runs.router, dependencies=api_key_gate)
+    application.include_router(clusters.router, dependencies=api_key_gate)
+    application.include_router(notebooks.router, dependencies=api_key_gate)
+    application.include_router(sql.router, dependencies=api_key_gate)
+    application.include_router(unity_catalog.router, dependencies=api_key_gate)
+    application.include_router(dbfs.router, dependencies=api_key_gate)
+    application.include_router(dlt.router, dependencies=api_key_gate)
+    application.include_router(mlflow.router, dependencies=api_key_gate)
+    application.include_router(secrets.router, dependencies=api_key_gate)
+    application.include_router(permissions.router, dependencies=api_key_gate)
+    application.include_router(monitoring.router, dependencies=api_key_gate)
 
     return application
 

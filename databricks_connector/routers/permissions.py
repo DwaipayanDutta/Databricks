@@ -43,8 +43,7 @@ async def update_permissions(
     body: UpdatePermissionsRequest,
     service: PermissionsService = Depends(get_permissions_service),
 ) -> dict[str, Any]:
-    acl = [entry.model_dump() for entry in body.access_control_list]
-    return await service.update_permissions(object_type, object_id, acl)
+    return await service.update_permissions(object_type, object_id, body.to_wire_acl())
 
 
 @router.post(

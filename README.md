@@ -1,286 +1,150 @@
+<div align="center">
+
 # Databricks Connector
 
-![Python](https://img.shields.io/badge/Python-3.12-blue.svg)
-![FastAPI](https://img.shields.io/badge/FastAPI-Latest-009688.svg)
-![Async](https://img.shields.io/badge/Async-httpx-success.svg)
-![License](https://img.shields.io/badge/License-MIT-green.svg)
-![Databricks](https://img.shields.io/badge/Databricks-REST_API-orange.svg)
-![Status](https://img.shields.io/badge/Status-Production_Ready-success.svg)
-![Coverage](https://img.shields.io/badge/Coverage-83%25-brightgreen.svg)
+### The production-ready API layer between your platform and Databricks.
+
+Build reliable automations, agent workflows, internal tools, and data products on top of a typed, async-first FastAPI service — without coupling your application directly to the Databricks SDK.
+
+<br />
+
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Async](https://img.shields.io/badge/Async--first-httpx-7C3AED)](https://www.python-httpx.org/)
+[![Databricks](https://img.shields.io/badge/Databricks-REST%20API-FF3621?logo=databricks&logoColor=white)](https://docs.databricks.com/api/workspace/introduction)
+[![License](https://img.shields.io/badge/License-MIT-22C55E)](LICENSE)
+
+<br />
+
+**139 endpoints** &nbsp;·&nbsp; **14 route groups** &nbsp;·&nbsp; **5 auth modes** &nbsp;·&nbsp; **115 tests** &nbsp;·&nbsp; **87% coverage**
+
+<br />
+
+[Quick start](#-quick-start) &nbsp;·&nbsp; [Capabilities](#-capabilities) &nbsp;·&nbsp; [API surface](#-api-surface) &nbsp;·&nbsp; [Architecture](#-architecture)
+
+</div>
 
 ---
 
-## Enterprise Databricks Connector
+## Why this connector?
 
-A **production-grade**, **async** Databricks connector built with **FastAPI**, exposing the full Databricks REST API surface through a clean, modular, layered service architecture.
+Databricks is powerful. Integrating it into every service, workflow engine, or AI agent from scratch is not.
 
-Designed to run as a standalone microservice or as an enterprise connector inside a **Multi-Agent AI Platform** — letting agents, workflow engines, and internal tools talk to a Databricks workspace over a typed, documented HTTP API instead of the raw Databricks SDK.
+**Databricks Connector** gives your systems one consistent, documented HTTP boundary for workspace operations. It handles the production concerns around the Databricks REST APIs — authentication, retries, pooling, circuit breaking, logging, metrics, validation, and error mapping — so your product teams can focus on what they are building.
 
----
-
-## Features
-
-- Production-ready, fully async FastAPI service
-- Strictly typed throughout (Python 3.12, `mypy`-clean)
-- 139 API endpoints across 14 route groups (13 Databricks API groups + Prometheus metrics) covering the full Databricks REST API surface
-- Layered architecture: Router → Service → `DatabricksClient` → Databricks REST API
-- Shared, pooled, singleton `DatabricksClient` with graceful shutdown
-- 5 authentication modes with automatic token refresh
-- Retry with exponential backoff + jitter, honoring `Retry-After`
-- Async-safe circuit breaker (closed → open → half-open)
-- Structured JSON logging with correlation IDs, request IDs, and secret masking
-- Consistent exception → HTTP status mapping across every endpoint
-- OpenAPI / Swagger / ReDoc documentation out of the box
-- Health, readiness, and liveness endpoints
-- Docker + docker-compose, non-root runtime image
-- GitHub Actions CI (ruff, black, mypy, pytest + coverage)
-- 115 tests, 87% coverage, no real network I/O in the test suite
-- `mypy --strict` clean across the whole codebase; `bandit` and `pip-audit` clean
-
----
-
-## Architecture
-
-```
-                 ┌───────────────────────────────┐
-                 │           Client Apps          │
-                 │  AI Agents • UI • SDK • CLI    │
-                 └───────────────┬─────────────────┘
-                                 │
-                                 ▼
-                  ┌───────────────────────────┐
-                  │        FastAPI App        │
-                  │      REST Endpoints       │
-                  └───────────────┬────────────┘
-                                  │
-         ┌────────────────────────┼─────────────────────────┐
-         ▼                        ▼                          ▼
-    Jobs Router              SQL Router                Clusters Router  ...
-         ▼                        ▼                          ▼
-   Service Layer            Service Layer              Service Layer
-         └──────────────────────┬───────────────────────────┘
-                                 ▼
-                     Shared DatabricksClient
-                                 │
-        Auth  •  Retry  •  Circuit Breaker  •  Correlation IDs
-                                 │
-                                 ▼
-                Databricks REST APIs (2.0 / 2.1)
+```text
+Your application  →  Databricks Connector  →  Databricks REST APIs
+                   auth · retry · resilience
+                   observability · validation
 ```
 
-Routers never call Databricks directly — every request flows through a
-service, which is the only layer that knows Databricks REST endpoint
-shapes. See `docs/architecture.md` for the full breakdown.
+Use it as:
+
+- A standalone internal microservice
+- The data and job execution layer for AI agents
+- A shared integration service for workflow platforms
+- A typed REST boundary for frontend applications and SDKs
 
 ---
 
-## Project structure
+## ✨ Capabilities
 
-```
-databricks_connector/
-│
-├── app.py                   FastAPI app factory (create_app), middleware, lifespan
-├── main.py                  uvicorn entrypoint
-├── requirements.txt         Runtime dependencies
-├── requirements-dev.txt     + testing / lint / type-check tooling
-├── pyproject.toml           Package metadata, ruff/black/mypy(strict)/pytest config
-├── setup.py                 Legacy setuptools entrypoint
-├── Dockerfile                Multi-stage, non-root runtime image (installs the real package)
-├── docker-compose.yml       Connector + Redis
-├── Makefile                 install / run / test / lint / format / security / docker targets
-├── .env.example
-├── .dockerignore
-├── CHANGELOG.md
-├── LICENSE
-│
-├── databricks_connector/     The installable package (import as `databricks_connector.*`)
-│   ├── __init__.py
-│   ├── app.py                 FastAPI app factory (create_app), middleware, lifespan
-│   ├── main.py                 uvicorn entrypoint
-│   │
-│   ├── core/
-│   │   ├── config.py             Typed Settings (pydantic-settings), fail-fast validation
-│   │   ├── auth.py                AuthManager + 5 TokenProvider strategies
-│   │   ├── client.py              DatabricksClient (pooled, singleton, retried)
-│   │   ├── retry.py                Tenacity retry policy + Retry-After support
-│   │   ├── circuit_breaker.py     Async-safe circuit breaker
-│   │   ├── exceptions.py           Exception hierarchy + status-code mapping
-│   │   ├── logging.py              Structured JSON logging
-│   │   ├── metrics.py               Prometheus counters/histograms/gauges
-│   │   ├── middleware.py           Correlation / timing / metrics / logging / exception middleware
-│   │   ├── dependencies.py         Shared ContextVars + FastAPI dependencies
-│   │   ├── cache.py                 Optional Redis / in-memory response cache
-│   │   └── constants.py
-│   │
-│   ├── routers/                  One thin router per API group
-│   │   ├── health.py  metrics.py  jobs.py  job_runs.py  clusters.py  notebooks.py
-│   │   ├── sql.py  unity_catalog.py  dbfs.py  dlt.py  mlflow.py
-│   │   └── secrets.py  permissions.py  monitoring.py
-│   │
-│   ├── services/                 Databricks REST API domain logic
-│   │   ├── health_service.py  jobs_service.py  cluster_service.py
-│   │   ├── notebook_service.py  sql_service.py  unity_catalog_service.py
-│   │   ├── dbfs_service.py  dlt_service.py  mlflow_service.py
-│   │   ├── secrets_service.py  permissions_service.py  monitoring_service.py
-│   │   └── _common.py            Small helpers shared across services
-│   │
-│   └── schemas/                  Pydantic request/response models (extra="forbid" by default)
-│
-├── tests/                    pytest suite (mocked DatabricksClient, no real network I/O)
-├── docs/                     architecture.md, api.md
-└── scripts/                  run.sh / run.bat / lint.sh / format.sh / test.sh
-```
+| Capability | What you get |
+| --- | --- |
+| **Broad API coverage** | Jobs, runs, clusters, SQL, notebooks, Unity Catalog, DBFS, DLT, MLflow, secrets, permissions, and monitoring |
+| **Async by default** | Fully asynchronous FastAPI and `httpx` integration for high-concurrency workloads |
+| **Resilient requests** | Connection pooling, exponential backoff with jitter, `Retry-After` support, and an async-safe circuit breaker |
+| **Flexible authentication** | PAT, OAuth, Azure Service Principal, Azure Managed Identity, and Bearer Token modes |
+| **Observable in production** | Structured JSON logs, request and correlation IDs, secret masking, health probes, and Prometheus metrics |
+| **Safe service boundaries** | Thin routers, domain services, typed Pydantic schemas, consistent error-to-status mapping, and fail-fast configuration |
+| **Ready to ship** | Docker, docker-compose, non-root runtime image, CI checks, OpenAPI docs, and an offline test suite |
 
 ---
 
-## Supported authentication
+## 🚀 Quick start
 
-| Mode | `AUTH_MODE` value | Required config |
-|---|---|---|
-| Personal Access Token | `pat` | `DATABRICKS_TOKEN` |
-| OAuth (client credentials) | `oauth` | `DATABRICKS_CLIENT_ID`, `DATABRICKS_CLIENT_SECRET` |
-| Azure Service Principal | `azure_service_principal` | `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET` |
-| Azure Managed Identity | `managed_identity` | optional `AZURE_MANAGED_IDENTITY_CLIENT_ID` |
-| Bearer Token | `bearer` | `BEARER_TOKEN` |
-
-All five share the same `TokenProvider` interface, cache their token in
-memory, and refresh automatically ~60 seconds before expiry using
-single-flight locking (concurrent callers reuse one in-flight refresh
-instead of each triggering their own).
-
----
-
-## API groups
-
-All endpoints are namespaced under `/api/v1/*` except health checks.
-
-| Group | Base path | Highlights |
-|---|---|---|
-| Health / Metrics | `/health` `/ready` `/live` `/metrics` | Process health, expanded readiness checks, liveness, Prometheus metrics |
-| Jobs | `/api/v1/jobs` | Create, update, delete, trigger, run-now, reset, repair, cancel, pause, resume, clone, export, import |
-| Job Runs | `/api/v1/job-runs` | List, get, logs, output, cancel, repair, retry, wait |
-| Clusters | `/api/v1/clusters` | Create, get, start, restart, resize, edit, terminate, permanent-delete, pin, unpin, events |
-| Workspace / Notebooks | `/api/v1/notebooks` | Import, export, list, delete, status, folders, move, copy |
-| SQL | `/api/v1/sql` | Execute statement, statement status/cancel, warehouses, query history |
-| Unity Catalog | `/api/v1/unity-catalog` | Catalogs, schemas, tables, volumes, functions, permissions, grants, external locations, storage credentials |
-| DBFS | `/api/v1/dbfs` | Upload, download, delete, move, mkdir, read, put, streaming create |
-| Delta Live Tables | `/api/v1/dlt` | Create/update/delete pipeline, start, stop, list, get, events |
-| MLflow | `/api/v1/mlflow` | Experiments, runs, log-metric/param, artifacts, model registry + versions + stage transitions |
-| Secrets | `/api/v1/secrets` | Scopes, put/delete secret, list secrets, ACLs |
-| Permissions | `/api/v1/permissions` | Get, update ACL, grant, revoke — generic across object types |
-| Monitoring | `/api/v1/monitoring` | Cluster/job metrics, cluster/job health, connector info + config |
-
-Full endpoint index: `docs/api.md`. Interactive docs: `/docs` and `/redoc`.
-
----
-
-## Installation
+### 1. Clone and install
 
 ```bash
 git clone https://github.com/DwaipayanDutta/Databricks.git
 cd Databricks
 
 python -m venv .venv
-source .venv/bin/activate      # Windows: .venv\Scripts\activate
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 
-pip install -r requirements.txt          # runtime only
-pip install -r requirements-dev.txt      # + pytest / ruff / black / mypy
-pip install -e .                         # install the package, editable
-
-cp .env.example .env           # then fill in your Databricks credentials
+pip install -r requirements.txt
+pip install -r requirements-dev.txt
+pip install -e .
 ```
 
----
-
-## Configuration
-
-All configuration is via environment variables (or a `.env` file); see
-`.env.example` for the complete list. Key variables:
-
-| Variable | Description |
-|---|---|
-| `DATABRICKS_HOST` | Workspace URL, e.g. `https://your-workspace.cloud.databricks.com` |
-| `AUTH_MODE` | `pat` \| `oauth` \| `azure_service_principal` \| `managed_identity` \| `bearer` |
-| `LOG_LEVEL` / `LOG_FORMAT` | Logging verbosity and format (`json` or plain text) |
-| `MAX_RETRIES` / `BACKOFF_FACTOR` | Retry tuning |
-| `CIRCUIT_BREAKER_FAILURE_THRESHOLD` / `CIRCUIT_BREAKER_RECOVERY_TIMEOUT` | Circuit breaker tuning |
-| `CACHE_ENABLED` / `REDIS_URL` | Optional response caching |
-| `CONNECTOR_API_KEY` | If set, callers must send a matching `X-API-Key` header |
-| `HTTP_MAX_CONNECTIONS` / `HTTP_MAX_KEEPALIVE_CONNECTIONS` / `HTTP_KEEPALIVE_EXPIRY_SECONDS` | Connection pool tuning |
-
-Configuration is validated **fail-fast**: the process refuses to start if
-required fields for the selected `AUTH_MODE` are missing, or if
-`DATABRICKS_HOST` isn't a valid URL.
-
----
-
-## Running
-
-Development (auto-reload):
+### 2. Configure your workspace
 
 ```bash
-uvicorn databricks_connector.main:app --reload
-# or
+cp .env.example .env
+```
+
+At minimum, configure your workspace URL and credentials:
+
+```dotenv
+DATABRICKS_HOST=https://your-workspace.cloud.databricks.com
+AUTH_MODE=pat
+DATABRICKS_TOKEN=your-token
+```
+
+Configuration is validated at startup. The service refuses to boot when the selected authentication mode is missing required values or the workspace URL is invalid.
+
+### 3. Start the service
+
+```bash
 make dev
 ```
 
-Simple single-process run (uses `HOST`/`PORT` from settings):
+Or run it directly:
 
 ```bash
-python -m databricks_connector.main
-# or
-make run
-# or, after `pip install`, the console entry point:
-databricks-connector
+uvicorn databricks_connector.main:app --reload
 ```
 
-Using the FastAPI factory directly:
+The service is available at **[http://localhost:8000](http://localhost:8000)**.
 
-```bash
-uvicorn databricks_connector.app:create_app --factory
-```
-
-Production (matches the Dockerfile's `CMD`):
-
-```bash
-uvicorn databricks_connector.main:app --host 0.0.0.0 --port 8000 --workers 4
-```
-
-Or with gunicorn as a process manager (not bundled — install separately:
-`pip install gunicorn`):
-
-```bash
-gunicorn databricks_connector.app:app -k uvicorn.workers.UvicornWorker -w 4
-```
-
-The API is then available at `http://localhost:8000`.
+| URL | Purpose |
+| --- | --- |
+| `/docs` | Interactive Swagger UI |
+| `/redoc` | ReDoc API reference |
+| `/openapi.json` | OpenAPI schema |
+| `/health` | Process health |
+| `/ready` | Dependency and readiness checks |
+| `/live` | Liveness probe |
+| `/metrics` | Prometheus metrics |
 
 ---
 
-## Swagger / OpenAPI
+## 🧩 API surface
 
-```
-http://localhost:8000/docs        # Swagger UI
-http://localhost:8000/redoc       # ReDoc
-http://localhost:8000/openapi.json
-```
+All operational endpoints are namespaced under `/api/v1`.
+
+| Domain | Base path | Includes |
+| --- | --- | --- |
+| **Jobs** | `/api/v1/jobs` | Create, update, delete, trigger, run-now, reset, repair, cancel, pause, resume, clone, export, and import |
+| **Job runs** | `/api/v1/job-runs` | List, inspect, cancel, repair, retry, wait, logs, and output |
+| **Clusters** | `/api/v1/clusters` | Create, start, restart, resize, edit, terminate, delete, pin, unpin, and events |
+| **Workspace & notebooks** | `/api/v1/notebooks` | Import, export, list, delete, status, folders, move, and copy |
+| **SQL** | `/api/v1/sql` | Execute, inspect, cancel statements, manage warehouses, and query history |
+| **Unity Catalog** | `/api/v1/unity-catalog` | Catalogs, schemas, tables, volumes, functions, grants, permissions, and storage |
+| **DBFS** | `/api/v1/dbfs` | Upload, download, read, write, delete, move, mkdir, and streaming create |
+| **Delta Live Tables** | `/api/v1/dlt` | Create, update, delete, start, stop, list, inspect, and events |
+| **MLflow** | `/api/v1/mlflow` | Experiments, runs, metrics, parameters, artifacts, models, and stage transitions |
+| **Secrets** | `/api/v1/secrets` | Scopes, secrets, and access control lists |
+| **Permissions** | `/api/v1/permissions` | Get, update, grant, and revoke permissions across object types |
+| **Monitoring** | `/api/v1/monitoring` | Cluster and job metrics, health, connector info, and configuration |
+
+See the complete endpoint index in [`docs/api.md`](docs/api.md).
 
 ---
 
-## Health
+## 💻 Example requests
 
-```
-GET /health   process-level liveness, no external calls
-GET /ready    circuit breaker + Databricks auth/connectivity + cache checks
-GET /live     liveness probe for orchestrators
-GET /metrics  Prometheus text-format metrics
-```
-
----
-
-## Example
-
-Trigger a job:
+### Trigger a job
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/jobs/trigger \
@@ -288,15 +152,18 @@ curl -X POST http://localhost:8000/api/v1/jobs/trigger \
   -d '{"job_id": 12345}'
 ```
 
-Execute a SQL statement:
+### Execute SQL
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/sql/statements/execute \
   -H "Content-Type: application/json" \
-  -d '{"statement": "SELECT 1", "warehouse_id": "0123456789abcdef"}'
+  -d '{
+    "statement": "SELECT 1",
+    "warehouse_id": "0123456789abcdef"
+  }'
 ```
 
-List Unity Catalog tables:
+### List Unity Catalog tables
 
 ```bash
 curl "http://localhost:8000/api/v1/unity-catalog/tables?catalog_name=main&schema_name=default"
@@ -304,10 +171,86 @@ curl "http://localhost:8000/api/v1/unity-catalog/tables?catalog_name=main&schema
 
 ---
 
-## Logging
+## 🔐 Authentication
 
-Structured JSON logs, one object per line, with correlation IDs, request
-IDs, and automatic masking of sensitive keys (tokens, secrets, passwords):
+Choose the mode that matches your deployment environment:
+
+| Mode | `AUTH_MODE` | Required configuration |
+| --- | --- | --- |
+| Personal Access Token | `pat` | `DATABRICKS_TOKEN` |
+| OAuth client credentials | `oauth` | `DATABRICKS_CLIENT_ID`, `DATABRICKS_CLIENT_SECRET` |
+| Azure Service Principal | `azure_service_principal` | `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET` |
+| Azure Managed Identity | `managed_identity` | Optional `AZURE_MANAGED_IDENTITY_CLIENT_ID` |
+| Bearer Token | `bearer` | `BEARER_TOKEN` |
+
+All providers share the same `TokenProvider` contract. Tokens are cached in memory and refreshed automatically before expiry using single-flight locking, so concurrent requests do not trigger duplicate refreshes.
+
+### Additional protection
+
+Set `CONNECTOR_API_KEY` to protect the connector's own endpoints. Clients must then send:
+
+```http
+X-API-Key: your-connector-key
+```
+
+Never commit credentials or `.env` files. Use your platform's secret manager in deployed environments.
+
+---
+
+## 🏗️ Architecture
+
+```text
+┌──────────────────────────────────────────────────────┐
+│              Client applications and agents          │
+│                 UI · SDK · CLI · workflows           │
+└──────────────────────────┬───────────────────────────┘
+                           │
+                           ▼
+┌──────────────────────────────────────────────────────┐
+│                    FastAPI application                │
+│        validation · middleware · OpenAPI · routes     │
+└──────────────────────────┬───────────────────────────┘
+                           │
+            ┌──────────────┼──────────────┐
+            ▼              ▼              ▼
+       Jobs router     SQL router    Clusters router   ...
+            │              │              │
+            └──────────────┼──────────────┘
+                           ▼
+┌──────────────────────────────────────────────────────┐
+│                    Domain services                   │
+│       Databricks API shapes and business logic       │
+└──────────────────────────┬───────────────────────────┘
+                           ▼
+┌──────────────────────────────────────────────────────┐
+│                  Shared DatabricksClient              │
+│    auth · pooling · retries · circuit breaker        │
+│    correlation IDs · logging · metrics · caching     │
+└──────────────────────────┬───────────────────────────┘
+                           ▼
+                 Databricks REST APIs 2.0 / 2.1
+```
+
+Routers never call Databricks directly. Every request moves through a domain service, keeping transport concerns separate from API-specific logic and making every layer straightforward to test.
+
+Read the deeper request lifecycle in [`docs/architecture.md`](docs/architecture.md).
+
+---
+
+## 🛡️ Built for production
+
+- Shared, pooled client with graceful shutdown
+- Exponential backoff with jitter and server-aware `Retry-After`
+- Async-safe circuit breaker: closed → open → half-open
+- Structured, one-object-per-line JSON logs
+- Request IDs and correlation IDs throughout the request lifecycle
+- Automatic masking of tokens, secrets, and passwords
+- Consistent exception-to-HTTP status mapping without leaking internal details
+- Optional Redis or in-memory response caching
+- Health, readiness, liveness, and Prometheus endpoints
+- Docker image with a slim runtime, non-root user, and built-in health check
+
+Example log event:
 
 ```json
 {
@@ -326,102 +269,133 @@ IDs, and automatic masking of sensitive keys (tokens, secrets, passwords):
 
 ---
 
-## Security
+## 🐳 Docker
 
-- OAuth / PAT / Azure Service Principal / Managed Identity / Bearer auth
-- Automatic, single-flight token refresh
-- Secret masking in all structured logs
-- Optional `X-API-Key` gate on the connector's own endpoints
-- Consistent exception → HTTP status mapping (no leaking internal detail)
-- Circuit breaker to fail fast rather than hammer a struggling dependency
-- Retry policy that honors server-supplied `Retry-After`
-
----
-
-## Testing
-
-```bash
-make test
-# or
-scripts/test.sh
-# or directly
-pytest -v --cov=databricks_connector --cov-report=term-missing
-```
-
-The suite mocks the Databricks HTTP layer (a fake `DatabricksClient` for
-router tests, `respx` for lower-level `httpx`/auth tests) so it runs fully
-offline. Current state: **115 tests passing, 87% coverage** across
-`core/`, `services/`, `routers/`, and `schemas/`.
-
----
-
-## Docker
+Build and run the connector:
 
 ```bash
 docker build -t databricks-connector:latest .
-docker run --rm -p 8000:8000 --env-file .env databricks-connector:latest
+docker run --rm \
+  -p 8000:8000 \
+  --env-file .env \
+  databricks-connector:latest
 ```
 
-With Redis for caching:
+Start the connector with Redis-backed caching:
 
 ```bash
 docker compose up --build
 ```
 
-Multi-stage build, slim runtime, non-root user, built-in `HEALTHCHECK`
-against `/live`, and a `.dockerignore` that keeps `.env`, `.git`, and test
-artifacts out of the image.
+---
+
+## 🧪 Testing and quality
+
+Run the full test suite:
+
+```bash
+make test
+```
+
+Or run it directly:
+
+```bash
+pytest -v --cov=databricks_connector --cov-report=term-missing
+```
+
+The test suite runs fully offline:
+
+- Databricks HTTP calls are mocked
+- Router tests use a fake `DatabricksClient`
+- Lower-level `httpx` and authentication tests use `respx`
+- No real workspace network calls are required
+
+Current project checks include:
+
+- `ruff`
+- `black`
+- `mypy --strict`
+- `pytest` with coverage
+- `bandit`
+- `pip-audit`
 
 ---
 
-## CI/CD
+## 📁 Project layout
 
-`.github/workflows/python.yml` runs on every push/PR to `main`:
+```text
+databricks_connector/
+├── app.py                 FastAPI app factory, middleware, and lifespan
+├── main.py                Uvicorn entrypoint
+├── core/                  Config, auth, client, retries, logging, metrics
+├── routers/               Thin routers organized by Databricks API domain
+├── services/              Domain logic for Databricks REST APIs
+└── schemas/               Typed Pydantic request and response models
 
-- `ruff check .`
-- `black --check .`
-- `mypy core routers services schemas tests app.py main.py`
-- `pytest` with coverage reporting
-
----
-
-## Design principles
-
-- Clean, layered architecture (Router → Service → `DatabricksClient`)
-- SOLID principles, dependency injection via FastAPI's `Depends`
-- Async-first throughout
-- Thin routers — no business logic, no duplicated code
-- Single shared, pooled `DatabricksClient` with graceful shutdown
-- Enterprise-grade structured logging
-- High testability: every service accepts an injectable client
+tests/                     Offline pytest suite
+docs/                      API reference and architecture guide
+scripts/                   Run, test, lint, and formatting helpers
+Dockerfile                Multi-stage non-root runtime image
+docker-compose.yml         Connector plus Redis
+```
 
 ---
 
-## Roadmap
+## ⚙️ Common commands
+
+| Command | Purpose |
+| --- | --- |
+| `make dev` | Start the development server with auto-reload |
+| `make run` | Start a single production-style process |
+| `make test` | Run tests and coverage |
+| `make lint` | Run lint checks |
+| `make format` | Format the codebase |
+| `make security` | Run security checks |
+| `make docker` | Build the Docker image |
+
+---
+
+## 🗺️ Roadmap
 
 - Kubernetes Helm chart
-- Prometheus metrics export
-- OpenTelemetry trace export (hooks already present in config)
-- Azure Key Vault / AWS Secrets Manager / GCP Secret Manager integration
+- Prometheus metrics export improvements
+- OpenTelemetry trace export
+- Azure Key Vault, AWS Secrets Manager, and GCP Secret Manager integrations
 - Generated client SDKs
 - Multi-workspace support
 
+Have an idea? Open an issue or start a discussion — contributions are welcome.
+
 ---
 
-## Contributing
+## 🤝 Contributing
 
 1. Fork the repository
 2. Create a feature branch
-3. Commit your changes
-4. Push your branch
-5. Open a Pull Request
+3. Make your change and add tests
+4. Run the formatting, lint, type, and test checks
+5. Push your branch
+6. Open a pull request with context and a verification plan
+
+Please keep routers thin, preserve the service boundary, and avoid introducing real network calls into the test suite.
 
 ---
 
-## License
+## 📄 License
 
-MIT — see `LICENSE`.
+MIT — see [`LICENSE`](LICENSE).
 
-See `CHANGELOG.md` for a full history of changes, and `docs/architecture.md`
-for a deep dive into the request lifecycle, auth internals, and resiliency
-design.
+For the full history, see [`CHANGELOG.md`](CHANGELOG.md).
+
+<div align="center">
+
+<br />
+
+**Make Databricks feel like a dependable platform primitive.**
+
+<br />
+<br />
+
+[⬆ Back to top](#databricks-connector)
+
+</div>
