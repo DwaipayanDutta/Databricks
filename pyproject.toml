@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "databricks-connector"
-version = "1.0.2"
+version = "1.1.0"
 description = "Enterprise FastAPI connector exposing the full Databricks REST API surface for Multi-Agent AI Platforms."
 readme = "README.md"
 requires-python = ">=3.12"

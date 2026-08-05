@@ -23,4 +23,10 @@ MASKED_KEYS = {
 }
 
 CONNECTOR_NAME = "databricks-connector"
-CONNECTOR_VERSION = "1.0.0"
+# Kept in lockstep with pyproject.toml's [project].version, setup.py's
+# version=, and databricks_connector/__init__.py's __version__ -- these had
+# drifted (this constant alone was still "1.0.0" while every other version
+# marker in the repo said "1.0.2"), so `/health`, `/api/v1/monitoring/connector/info`,
+# and the OpenAPI schema's `info.version` disagreed with the installed
+# package's own version.
+CONNECTOR_VERSION = "1.1.0"

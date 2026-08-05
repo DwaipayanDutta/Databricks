@@ -12,6 +12,15 @@ services:
     environment:
       - HOST=0.0.0.0
       - PORT=8000
+      # Override whatever REDIS_URL/CACHE_ENABLED came from .env: inside
+      # this compose network the Redis service is reachable at the
+      # hostname `redis`, never `localhost` (that would resolve to the
+      # connector container itself). `environment:` here takes precedence
+      # over `env_file:` per Compose semantics, so a stock `.env` copied
+      # from `.env.example` (which defaults to `redis://localhost:6379/0`)
+      # still works correctly under `docker compose up`.
+      - CACHE_ENABLED=true
+      - REDIS_URL=redis://redis:6379/0
     depends_on:
       redis:
         condition: service_started

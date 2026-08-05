@@ -14,7 +14,17 @@ class ExecuteStatementRequest(BaseModel):
     schema_: str | None = Field(default=None, alias="schema")
     parameters: list[dict[str, Any]] = Field(default_factory=list)
     wait_timeout: str = "10s"
-    row_limit: int | None = None
+    row_limit: int | None = Field(default=None, description="Max rows to return (LIMIT-equivalent).")
+    byte_limit: int | None = Field(default=None, description="Max total bytes of result data to return.")
+    disposition: str | None = Field(
+        default=None, description="'INLINE' or 'EXTERNAL_LINKS' result delivery mode."
+    )
+    format: str | None = Field(
+        default=None, description="Result format: 'JSON_ARRAY', 'ARROW_STREAM', or 'CSV'."
+    )
+    on_wait_timeout: str | None = Field(
+        default=None, description="'CONTINUE' or 'CANCEL' behavior when wait_timeout elapses."
+    )
 
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 

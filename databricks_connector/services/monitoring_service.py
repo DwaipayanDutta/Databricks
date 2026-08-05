@@ -10,6 +10,13 @@ from databricks_connector.core.config import Settings
 
 _START_TIME = time.monotonic()
 
+# Both summary endpoints below page through Databricks' list APIs to avoid
+# silently under-reporting counts for workspaces with more clusters/jobs
+# than fit in a single page; capped so a misbehaving/huge workspace (or a
+# pathological page_token loop) can't turn a "summary" call into an
+# effectively unbounded number of upstream requests.
+_MAX_SUMMARY_PAGES = 20
+
 
 class MonitoringService:
     def __init__(self, client: DatabricksClient, settings: Settings) -> None:

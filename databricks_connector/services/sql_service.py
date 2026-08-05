@@ -31,6 +31,10 @@ class SqlService:
         parameters: list[dict[str, Any]] | None = None,
         wait_timeout: str = "10s",
         row_limit: int | None = None,
+        byte_limit: int | None = None,
+        disposition: str | None = None,
+        format: str | None = None,
+        on_wait_timeout: str | None = None,
     ) -> dict[str, Any]:
         body: dict[str, Any] = {
             "statement": statement,
@@ -45,6 +49,14 @@ class SqlService:
             body["parameters"] = parameters
         if row_limit:
             body["row_limit"] = row_limit
+        if byte_limit:
+            body["byte_limit"] = byte_limit
+        if disposition:
+            body["disposition"] = disposition
+        if format:
+            body["format"] = format
+        if on_wait_timeout:
+            body["on_wait_timeout"] = on_wait_timeout
         return await self._client.post(_STMT_BASE, json_body=body)
 
     async def get_statement_status(self, statement_id: str) -> dict[str, Any]:

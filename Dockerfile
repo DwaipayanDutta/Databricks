@@ -17,7 +17,12 @@ COPY pyproject.toml setup.py requirements.txt ./
 COPY databricks_connector/ ./databricks_connector/
 COPY README.md ./
 
-RUN pip install --user --no-cache-dir .
+# Installs the `cache` extra (redis client) alongside the base package so
+# CACHE_ENABLED=true + REDIS_URL works out of the box in the runtime image.
+# Without this, CacheClient silently falls back to the in-memory backend
+# (RedisCache's `import redis` raises ImportError, which is caught) even
+# though docker-compose.yml provisions a Redis service to be used.
+RUN pip install --user --no-cache-dir ".[cache]"
 
 
 FROM python:3.12-slim AS runtime
@@ -38,6 +43,13 @@ USER connector
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/live', timeout=3).status==200 else 1)"
+    CMD python -c "import os,urllib.request,sys; sys.exit(0 if urllib.request.urlopen(f'http://localhost:{os.environ.get(\"PORT\", 8000)}/live', timeout=3).status==200 else 1)"
 
-CMD ["uvicorn", "databricks_connector.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+# Shell form (not exec-array form) so HOST/PORT/UVICORN_WORKERS env vars are
+# actually honored at container start -- the array form below previously
+# hardcoded 0.0.0.0:8000/2 workers regardless of what Settings/.env
+# configured. `exec` replaces the shell process so uvicorn still receives
+# SIGTERM directly (graceful shutdown via app.py's lifespan hook still
+# works exactly as with the array form).
+CMD exec uvicorn databricks_connector.main:app \
+    --host "${HOST:-0.0.0.0}" --port "${PORT:-8000}" --workers "${UVICORN_WORKERS:-2}"

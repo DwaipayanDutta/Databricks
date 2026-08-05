@@ -38,6 +38,10 @@ async def execute_statement(
         parameters=body.parameters,
         wait_timeout=body.wait_timeout,
         row_limit=body.row_limit,
+        byte_limit=body.byte_limit,
+        disposition=body.disposition,
+        format=body.format,
+        on_wait_timeout=body.on_wait_timeout,
     )
 
 
