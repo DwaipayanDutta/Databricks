@@ -25,11 +25,9 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH=/home/connector/.local/bin:$PATH
 
-COPY --from=builder /root/.local /home/connector/.local
+COPY --from=builder --chown=connector:connector /root/.local /home/connector/.local
 
 COPY --chown=connector:connector . .
-
-RUN chown -R connector:connector /app
 
 USER connector
 

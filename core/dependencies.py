@@ -13,6 +13,9 @@ from contextvars import ContextVar
 
 from fastapi import Header, Request
 
+from .config import get_settings
+from .exceptions import AuthenticationError
+
 request_id_ctx: ContextVar[str | None] = ContextVar("request_id", default=None)
 correlation_id_ctx: ContextVar[str | None] = ContextVar("correlation_id", default=None)
 
@@ -39,9 +42,6 @@ async def verify_connector_api_key(request: Request) -> None:
     If settings.connector_api_key is unset, this is a no-op, so the
     connector works out of the box in local/dev environments.
     """
-    from core.config import get_settings
-    from core.exceptions import AuthenticationError
-
     settings = get_settings()
     if not settings.connector_api_key:
         return

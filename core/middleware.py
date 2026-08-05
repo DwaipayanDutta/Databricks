@@ -9,10 +9,10 @@ from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
-from core.constants import HEADER_CORRELATION_ID, HEADER_REQUEST_ID
-from core.dependencies import correlation_id_ctx, new_request_id, request_id_ctx
-from core.exceptions import DatabricksConnectorError
-from core.logging import get_logger
+from .constants import HEADER_CORRELATION_ID, HEADER_REQUEST_ID
+from .dependencies import correlation_id_ctx, new_request_id, request_id_ctx
+from .exceptions import DatabricksConnectorError
+from .logging import get_logger
 
 logger = get_logger(__name__)
 

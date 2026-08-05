@@ -40,19 +40,23 @@ class NotebookService:
     async def create_folder(self, path: str) -> dict[str, Any]:
         return await self._client.post(f"{_BASE}/mkdirs", json_body={"path": path})
 
-    async def move_object(self, source_path: str, destination_path: str) -> dict[str, Any]:
-        # The public Workspace API has no dedicated "move" verb; emulate it
-        # via export + import + delete so callers get a stable move contract.
-        exported = await self.export_notebook(source_path, "SOURCE")
+    async def _export_content_and_language(self, path: str) -> tuple[str, str]:
+        """Shared by move/copy: export a notebook's source and detect its
+        language, since the public Workspace API has no dedicated
+        "move"/"copy" verb -- both are emulated via export + import.
+        """
+        exported = await self.export_notebook(path, "SOURCE")
         content = exported.get("content", "")
         language = exported.get("language", "PYTHON")
+        return content, language
+
+    async def move_object(self, source_path: str, destination_path: str) -> dict[str, Any]:
+        content, language = await self._export_content_and_language(source_path)
         await self.import_notebook(destination_path, content, language, "SOURCE", True)
         await self.delete_object(source_path, recursive=False)
         return {"source_path": source_path, "destination_path": destination_path, "moved": True}
 
     async def copy_object(self, source_path: str, destination_path: str, overwrite: bool) -> dict[str, Any]:
-        exported = await self.export_notebook(source_path, "SOURCE")
-        content = exported.get("content", "")
-        language = exported.get("language", "PYTHON")
+        content, language = await self._export_content_and_language(source_path)
         result = await self.import_notebook(destination_path, content, language, "SOURCE", overwrite)
         return {"source_path": source_path, "destination_path": destination_path, "copied": True, **result}

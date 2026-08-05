@@ -1,7 +1,11 @@
-.PHONY: install run dev test lint format typecheck docker-build docker-run clean
+.PHONY: install install-dev run dev test lint format typecheck docker-build docker-run clean
 
 install:
 	pip install -r requirements.txt
+
+install-dev:
+	pip install -r requirements-dev.txt
+	pip install -e .
 
 run:
 	python main.py

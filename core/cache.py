@@ -12,8 +12,8 @@ import json
 import time
 from typing import Any
 
-from core.config import Settings
-from core.logging import get_logger
+from .config import Settings
+from .logging import get_logger
 
 logger = get_logger(__name__)
 

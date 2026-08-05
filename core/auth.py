@@ -14,14 +14,16 @@ the token in memory, refreshing it automatically shortly before expiry.
 
 from __future__ import annotations
 
+import asyncio
+import threading
 import time
 from abc import ABC, abstractmethod
 
 import httpx
 
-from core.config import AuthMode, Settings
-from core.exceptions import AuthenticationError, ConfigurationError
-from core.logging import get_logger
+from .config import AuthMode, Settings, get_settings
+from .exceptions import AuthenticationError, ConfigurationError
+from .logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -30,25 +32,43 @@ _REFRESH_SKEW_SECONDS = 60
 
 
 class TokenProvider(ABC):
-    """Base class for all authentication strategies."""
+    """Base class for all authentication strategies.
+
+    Thread/coroutine safety: `get_token()` uses double-checked locking around
+    an `asyncio.Lock` so that when many concurrent requests observe an
+    expired token at once, only a single `_fetch_token()` call is made
+    (avoiding a "thundering herd" of simultaneous token refreshes against
+    the identity provider) while everyone else waits for, then reuses, that
+    result.
+    """
 
     def __init__(self) -> None:
         self._token: str | None = None
         self._expires_at: float = 0.0
+        self._refresh_lock = asyncio.Lock()
 
     @abstractmethod
     async def _fetch_token(self) -> tuple[str, float]:
         """Return (token, ttl_seconds)."""
 
+    def _is_valid(self, now: float) -> bool:
+        return bool(self._token) and now < self._expires_at - _REFRESH_SKEW_SECONDS
+
     async def get_token(self) -> str:
         now = time.monotonic()
-        if self._token and now < self._expires_at - _REFRESH_SKEW_SECONDS:
-            return self._token
+        if self._is_valid(now):
+            return self._token  # type: ignore[return-value]
 
-        token, ttl_seconds = await self._fetch_token()
-        self._token = token
-        self._expires_at = now + ttl_seconds
-        return token
+        async with self._refresh_lock:
+            # Re-check: another coroutine may have refreshed while we waited.
+            now = time.monotonic()
+            if self._is_valid(now):
+                return self._token  # type: ignore[return-value]
+
+            token, ttl_seconds = await self._fetch_token()
+            self._token = token
+            self._expires_at = now + ttl_seconds
+            return token
 
     def invalidate(self) -> None:
         self._token = None
@@ -239,12 +259,22 @@ class AuthManager:
 
 
 _auth_manager: AuthManager | None = None
+_auth_manager_lock = threading.Lock()
 
 
 def get_auth_manager() -> AuthManager:
+    """Return the process-wide singleton AuthManager, creating it lazily.
+
+    This is intentionally lazy (rather than created at import time) so that
+    settings are only read -- and validated -- the first time a token is
+    actually needed, not merely when this module is imported. Creation is
+    guarded by a `threading.Lock` so it is safe to call from multiple
+    threads (e.g. uvicorn's threadpool for sync dependencies) as well as
+    concurrently from multiple asyncio coroutines.
+    """
     global _auth_manager
     if _auth_manager is None:
-        from core.config import get_settings
-
-        _auth_manager = AuthManager(get_settings())
+        with _auth_manager_lock:
+            if _auth_manager is None:  # re-check inside the lock
+                _auth_manager = AuthManager(get_settings())
     return _auth_manager

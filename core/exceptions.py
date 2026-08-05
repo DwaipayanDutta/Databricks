@@ -96,13 +96,20 @@ class TimeoutErrorConnector(DatabricksConnectorError):
     error_code = "timeout"
 
 
-STATUS_CODE_EXCEPTION_MAP = {
+# Every status code Databricks is documented to return from its REST APIs
+# is mapped explicitly here so the connector's error body always carries a
+# meaningful `error` code alongside the HTTP status -- never falls through
+# to a misleading generic "internal_error" for a well-known client/server
+# error status.
+STATUS_CODE_EXCEPTION_MAP: dict[int, type[DatabricksConnectorError]] = {
+    400: ValidationAPIError,
     401: AuthenticationError,
     403: AuthorizationError,
     404: NotFoundError,
     409: ConflictError,
     429: RateLimitError,
     500: DatabricksServerError,
+    501: DatabricksServerError,
     502: DatabricksServerError,
     503: ServiceUnavailableError,
     504: TimeoutErrorConnector,
@@ -112,6 +119,12 @@ STATUS_CODE_EXCEPTION_MAP = {
 def exception_for_status(
     status_code: int, message: str, details: dict[str, Any] | None = None
 ) -> DatabricksConnectorError:
-    """Map an HTTP status code returned by Databricks to a connector exception."""
+    """Map an HTTP status code returned by Databricks to a connector exception.
+
+    Falls back to the generic `DatabricksConnectorError` (reported as HTTP
+    500 / `internal_error`) only for status codes Databricks isn't
+    documented to return; every mapped code above keeps the exception's
+    `error_code` consistent with its `status_code`.
+    """
     exc_cls = STATUS_CODE_EXCEPTION_MAP.get(status_code, DatabricksConnectorError)
     return exc_cls(message, status_code=status_code, details=details)

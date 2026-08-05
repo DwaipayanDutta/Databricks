@@ -10,19 +10,21 @@ A single reusable client used by every service layer module. It handles:
 
 from __future__ import annotations
 
+import asyncio
+import threading
 import time
 from typing import Any
 
 import httpx
 
-from core.auth import AuthManager, get_auth_manager
-from core.circuit_breaker import CircuitBreaker, get_circuit_breaker
-from core.config import Settings, get_settings
-from core.constants import CONNECTOR_NAME, CONNECTOR_VERSION, HEADER_CORRELATION_ID, HEADER_REQUEST_ID
-from core.dependencies import correlation_id_ctx, new_request_id, request_id_ctx
-from core.exceptions import DatabricksConnectorError, ServiceUnavailableError, exception_for_status
-from core.logging import get_logger
-from core.retry import RetryableHTTPError, build_retry_decorator, is_retryable_status
+from .auth import AuthManager, get_auth_manager
+from .circuit_breaker import CircuitBreaker, get_circuit_breaker
+from .config import Settings, get_settings
+from .constants import CONNECTOR_NAME, CONNECTOR_VERSION, HEADER_CORRELATION_ID, HEADER_REQUEST_ID
+from .dependencies import correlation_id_ctx, new_request_id, request_id_ctx
+from .exceptions import DatabricksConnectorError, ServiceUnavailableError, exception_for_status
+from .logging import get_logger
+from .retry import RetryableHTTPError, build_retry_decorator, is_retryable_status
 
 logger = get_logger(__name__)
 
@@ -47,17 +49,28 @@ class DatabricksClient:
             self._settings.max_retries, self._settings.backoff_factor
         )
         self._http: httpx.AsyncClient | None = None
+        self._http_lock = asyncio.Lock()
 
     async def _get_http(self) -> httpx.AsyncClient:
-        if self._http is None or self._http.is_closed:
-            timeout = httpx.Timeout(
-                self._settings.request_timeout_seconds,
-                connect=self._settings.connect_timeout_seconds,
-            )
-            self._http = httpx.AsyncClient(
-                base_url=self._settings.databricks_host.rstrip("/"),
-                timeout=timeout,
-            )
+        """Return the pooled httpx.AsyncClient, creating it lazily and
+        exactly once (guarded by an asyncio.Lock so concurrent callers
+        don't race to open duplicate connection pools).
+        """
+        if self._http is not None and not self._http.is_closed:
+            return self._http
+
+        async with self._http_lock:
+            # Re-check inside the lock: another coroutine may have already
+            # created the pool while we were waiting for it.
+            if self._http is None or self._http.is_closed:
+                timeout = httpx.Timeout(
+                    self._settings.request_timeout_seconds,
+                    connect=self._settings.connect_timeout_seconds,
+                )
+                self._http = httpx.AsyncClient(
+                    base_url=self._settings.databricks_host.rstrip("/"),
+                    timeout=timeout,
+                )
         return self._http
 
     async def aclose(self) -> None:
@@ -174,18 +187,33 @@ class DatabricksClient:
 
 
 _client: DatabricksClient | None = None
+_client_lock = threading.Lock()
 
 
 def get_databricks_client() -> DatabricksClient:
-    """FastAPI dependency / module-level accessor returning a shared client."""
+    """FastAPI dependency / module-level accessor returning the process-wide
+    singleton DatabricksClient (and, transitively, its pooled httpx
+    connection pool). Creation is guarded by a `threading.Lock` for safety
+    even if called from multiple threads; used as a FastAPI dependency it
+    is called once per request but always returns the same instance.
+    """
     global _client
     if _client is None:
-        _client = DatabricksClient()
+        with _client_lock:
+            if _client is None:  # re-check inside the lock
+                _client = DatabricksClient()
     return _client
 
 
 async def close_databricks_client() -> None:
+    """Gracefully close the shared client's connection pool.
+
+    Called from `app.py`'s lifespan shutdown hook so in-flight connections
+    are drained rather than dropped when the process stops.
+    """
     global _client
-    if _client is not None:
-        await _client.aclose()
+    with _client_lock:
+        client_to_close = _client
         _client = None
+    if client_to_close is not None:
+        await client_to_close.aclose()

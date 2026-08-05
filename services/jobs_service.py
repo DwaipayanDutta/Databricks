@@ -70,19 +70,21 @@ class JobsService:
     async def cancel_run(self, run_id: int) -> dict[str, Any]:
         return await self._client.post(f"{_BASE}/runs/cancel", json_body={"run_id": run_id})
 
-    async def pause_job(self, job_id: int) -> dict[str, Any]:
+    async def _set_schedule_pause_status(self, job_id: int, pause_status: str) -> dict[str, Any]:
+        """Shared by pause_job/resume_job: flip a job's schedule.pause_status
+        in place, since Databricks has no dedicated pause/resume endpoint.
+        """
         job = await self.get_job(job_id)
         settings = job.get("settings", {})
-        schedule = settings.get("schedule", {})
-        schedule["pause_status"] = "PAUSED"
+        schedule = dict(settings.get("schedule", {}))
+        schedule["pause_status"] = pause_status
         return await self.update_job(job_id, {"schedule": schedule}, [])
 
+    async def pause_job(self, job_id: int) -> dict[str, Any]:
+        return await self._set_schedule_pause_status(job_id, "PAUSED")
+
     async def resume_job(self, job_id: int) -> dict[str, Any]:
-        job = await self.get_job(job_id)
-        settings = job.get("settings", {})
-        schedule = settings.get("schedule", {})
-        schedule["pause_status"] = "UNPAUSED"
-        return await self.update_job(job_id, {"schedule": schedule}, [])
+        return await self._set_schedule_pause_status(job_id, "UNPAUSED")
 
     async def clone_job(self, job_id: int, new_name: str | None = None) -> dict[str, Any]:
         job = await self.get_job(job_id)

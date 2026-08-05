@@ -13,8 +13,8 @@ import sys
 import time
 from typing import Any
 
-from core.constants import MASKED_KEYS
-from core.dependencies import correlation_id_ctx, request_id_ctx
+from .constants import MASKED_KEYS
+from .dependencies import correlation_id_ctx, request_id_ctx
 
 
 class JsonFormatter(logging.Formatter):

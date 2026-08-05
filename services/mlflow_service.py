@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from core.client import DatabricksClient
+
+from ._common import tags_dict_to_kv_list
 
 _BASE = "/api/2.0/mlflow"
 
@@ -21,7 +24,7 @@ class MlflowService:
         if artifact_location:
             body["artifact_location"] = artifact_location
         if tags:
-            body["tags"] = [{"key": k, "value": v} for k, v in tags.items()]
+            body["tags"] = tags_dict_to_kv_list(tags)
         return await self._client.post(f"{_BASE}/experiments/create", json_body=body)
 
     async def get_experiment(self, experiment_id: str) -> dict[str, Any]:
@@ -43,7 +46,7 @@ class MlflowService:
         if run_name:
             body["run_name"] = run_name
         if tags:
-            body["tags"] = [{"key": k, "value": v} for k, v in tags.items()]
+            body["tags"] = tags_dict_to_kv_list(tags)
         return await self._client.post(f"{_BASE}/runs/create", json_body=body)
 
     async def get_run(self, run_id: str) -> dict[str, Any]:
@@ -58,13 +61,11 @@ class MlflowService:
     async def log_metric(
         self, run_id: str, key: str, value: float, timestamp: int | None, step: int | None
     ) -> dict[str, Any]:
-        import time as _time
-
         body = {
             "run_id": run_id,
             "key": key,
             "value": value,
-            "timestamp": timestamp or int(_time.time() * 1000),
+            "timestamp": timestamp or int(time.time() * 1000),
             "step": step or 0,
         }
         return await self._client.post(f"{_BASE}/runs/log-metric", json_body=body)
@@ -89,7 +90,7 @@ class MlflowService:
         if description:
             body["description"] = description
         if tags:
-            body["tags"] = [{"key": k, "value": v} for k, v in tags.items()]
+            body["tags"] = tags_dict_to_kv_list(tags)
         return await self._client.post(f"{_BASE}/registered-models/create", json_body=body)
 
     async def get_registered_model(self, name: str) -> dict[str, Any]:

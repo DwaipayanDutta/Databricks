@@ -1,17 +1,23 @@
-"""Health, readiness, and liveness endpoints."""
+"""Health, readiness, and liveness endpoints.
+
+Thin by design: all readiness decision logic lives in HealthService.
+"""
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from core.circuit_breaker import get_circuit_breaker
 from core.client import DatabricksClient, get_databricks_client
 from core.config import Settings, get_settings
 from core.constants import CONNECTOR_VERSION
-from core.exceptions import DatabricksConnectorError
 from schemas.common import HealthStatus, ReadinessStatus
+from services.health_service import HealthService
 
 router = APIRouter(tags=["Health"])
+
+
+def get_health_service(client: DatabricksClient = Depends(get_databricks_client)) -> HealthService:
+    return HealthService(client)
 
 
 @router.get(
@@ -30,27 +36,9 @@ async def health(settings: Settings = Depends(get_settings)) -> HealthStatus:
     summary="Readiness check",
     description="Verifies the connector can reach Databricks and that the circuit breaker is closed.",
 )
-async def ready(
-    client: DatabricksClient = Depends(get_databricks_client),
-    settings: Settings = Depends(get_settings),
-) -> ReadinessStatus:
-    dependencies: dict[str, str] = {}
-
-    breaker = get_circuit_breaker("databricks")
-    dependencies["circuit_breaker"] = breaker.state.value
-
-    try:
-        await client.get("/api/2.0/clusters/spark-versions")
-        dependencies["databricks_api"] = "reachable"
-        status = "ready"
-    except DatabricksConnectorError as exc:
-        dependencies["databricks_api"] = f"unreachable: {exc.error_code}"
-        status = "not_ready"
-    except Exception:  # noqa: BLE001
-        dependencies["databricks_api"] = "unreachable"
-        status = "not_ready"
-
-    return ReadinessStatus(status=status, dependencies=dependencies)
+async def ready(service: HealthService = Depends(get_health_service)) -> ReadinessStatus:
+    result = await service.check_readiness()
+    return ReadinessStatus(**result)
 
 
 @router.get(
