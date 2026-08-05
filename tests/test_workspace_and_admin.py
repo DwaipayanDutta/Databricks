@@ -41,6 +41,12 @@ def test_create_folder(client: TestClient, fake_client: FakeDatabricksClient) ->
     assert response.status_code == 200
 
 
+def test_delete_workspace_object(client: TestClient, fake_client: FakeDatabricksClient) -> None:
+    fake_client.post.return_value = {}
+    response = client.request("DELETE", "/api/v1/notebooks", json={"path": "/Repos/x", "recursive": False})
+    assert response.status_code == 200
+
+
 def test_move_and_copy_object(client: TestClient, fake_client: FakeDatabricksClient) -> None:
     fake_client.get.return_value = {"content": "eA==", "language": "PYTHON"}
     fake_client.post.return_value = {}

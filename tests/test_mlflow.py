@@ -84,3 +84,47 @@ def test_list_registered_models_with_page_token(
     assert response.status_code == 200
     _, kwargs = fake_client.get.call_args
     assert kwargs["params"]["page_token"] == "tok-2"
+
+
+def test_get_and_delete_experiment(client: TestClient, fake_client: FakeDatabricksClient) -> None:
+    fake_client.get.return_value = {"experiment": {"experiment_id": "exp-1"}}
+    assert client.get("/api/v1/mlflow/experiments/exp-1").status_code == 200
+    fake_client.post.return_value = {}
+    assert client.delete("/api/v1/mlflow/experiments/exp-1").status_code == 200
+
+
+def test_get_and_delete_run(client: TestClient, fake_client: FakeDatabricksClient) -> None:
+    fake_client.get.return_value = {"run": {"info": {"run_id": "run-1"}}}
+    assert client.get("/api/v1/mlflow/runs/run-1").status_code == 200
+    fake_client.post.return_value = {}
+    assert client.delete("/api/v1/mlflow/runs/run-1").status_code == 200
+
+
+def test_log_param(client: TestClient, fake_client: FakeDatabricksClient) -> None:
+    fake_client.post.return_value = {}
+    payload = {"run_id": "run-1", "key": "lr", "value": "0.01"}
+    response = client.post("/api/v1/mlflow/runs/log-param", json=payload)
+    assert response.status_code == 200
+
+
+def test_list_artifacts_without_path(client: TestClient, fake_client: FakeDatabricksClient) -> None:
+    fake_client.get.return_value = {"files": []}
+    response = client.get("/api/v1/mlflow/artifacts", params={"run_id": "run-1"})
+    assert response.status_code == 200
+    _, kwargs = fake_client.get.call_args
+    assert "path" not in kwargs["params"]
+
+
+def test_get_and_delete_registered_model(client: TestClient, fake_client: FakeDatabricksClient) -> None:
+    fake_client.get.return_value = {"registered_model": {"name": "my-model"}}
+    assert client.get("/api/v1/mlflow/models/my-model").status_code == 200
+    fake_client.post.return_value = {}
+    assert client.delete("/api/v1/mlflow/models/my-model").status_code == 200
+
+
+def test_create_and_get_model_version(client: TestClient, fake_client: FakeDatabricksClient) -> None:
+    fake_client.post.return_value = {"model_version": {"version": "1"}}
+    payload = {"name": "my-model", "source": "dbfs:/models/1", "run_id": "run-1"}
+    assert client.post("/api/v1/mlflow/model-versions", json=payload).status_code == 200
+    fake_client.get.return_value = {"model_version": {"version": "1"}}
+    assert client.get("/api/v1/mlflow/model-versions/my-model/1").status_code == 200
