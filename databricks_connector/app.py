@@ -89,6 +89,7 @@ def create_app() -> FastAPI:
             403: {"model": ErrorResponse, "description": "Authorization error"},
             404: {"model": ErrorResponse, "description": "Not found"},
             409: {"model": ErrorResponse, "description": "Conflict"},
+            413: {"model": ErrorResponse, "description": "Payload too large"},
             429: {"model": ErrorResponse, "description": "Rate limited"},
             500: {"model": ErrorResponse, "description": "Internal error"},
             503: {"model": ErrorResponse, "description": "Service unavailable"},

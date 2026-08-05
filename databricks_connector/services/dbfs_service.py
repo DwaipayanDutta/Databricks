@@ -73,9 +73,22 @@ class DbfsService:
         return {"path": path, "handle": handle, "chunks": len(base64_chunks), "uploaded": True}
 
     async def download_file(self, path: str, chunk_size: int = 1024 * 1024) -> dict[str, Any]:
-        """Download a (potentially large) file by paging through /read."""
+        """Download a (potentially large) file by paging through /read.
+
+        The full base64-encoded content is buffered in memory and returned
+        as a single JSON response (this connector never streams DBFS
+        downloads to the HTTP caller), so a file larger than
+        `dbfs_download_max_bytes` is refused up front rather than risking
+        exhausting the process' memory on an oversized/adversarial path.
+        """
         status = await self.get_status(path)
         file_size = status.get("file_size", 0)
+        max_bytes = self._settings.dbfs_download_max_bytes
+        if file_size > max_bytes:
+            raise PayloadTooLargeError(
+                f"File at '{path}' is {file_size} bytes, exceeding the "
+                f"{max_bytes}-byte limit for buffered DBFS downloads via this API."
+            )
         offset = 0
         chunks: list[str] = []
         while offset < file_size:

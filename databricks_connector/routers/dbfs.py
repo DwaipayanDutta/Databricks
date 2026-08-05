@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Query
 
 from databricks_connector.core.client import DatabricksClient, get_databricks_client
+from databricks_connector.core.config import Settings, get_settings
 from databricks_connector.schemas.dbfs import (
     DbfsDeleteRequest,
     DbfsMkdirRequest,
@@ -18,8 +19,11 @@ from databricks_connector.services.dbfs_service import DbfsService
 router = APIRouter(prefix="/api/v1/dbfs", tags=["DBFS"])
 
 
-def get_dbfs_service(client: DatabricksClient = Depends(get_databricks_client)) -> DbfsService:
-    return DbfsService(client)
+def get_dbfs_service(
+    client: DatabricksClient = Depends(get_databricks_client),
+    settings: Settings = Depends(get_settings),
+) -> DbfsService:
+    return DbfsService(client, settings)
 
 
 @router.get("/list", summary="List directory", description="List the contents of a DBFS directory.")
